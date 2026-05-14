@@ -94,6 +94,52 @@ function getCardioRiskInfo(pct) {
   };
 }
 
+function getDiabetesTrafficLight({ lastSeen, lastBloodTest, homeChecks, onMedication, diet, exercise, complications, hba1c }) {
+  const h = hba1c !== null && hba1c !== undefined ? parseFloat(hba1c) : null;
+
+  const redFlags = [
+    lastSeen      === 'over12mo',
+    lastBloodTest === 'over12mo' || lastBloodTest === 'never',
+    complications === true,
+    h !== null && h > 9,
+  ];
+  const amberFlags = [
+    lastSeen      === '3to12mo',
+    lastBloodTest === '3to12mo',
+    homeChecks    === 'never' || homeChecks === 'rarely',
+    onMedication  === false,
+    diet          === 'poor',
+    exercise      === false,
+    h !== null && h >= 7.5,
+  ];
+
+  const urgent = redFlags.some(Boolean);
+  const review = !urgent && amberFlags.some(Boolean);
+
+  const redCount   = redFlags.filter(Boolean).length;
+  const amberCount = amberFlags.filter(Boolean).length;
+
+  const urgentDesc = redCount > 1
+    ? `This patient has ${redCount} urgent concern${redCount > 1 ? 's' : ''} requiring immediate attention.`
+    : complications
+      ? 'This patient has known diabetes complications that require urgent medical review.'
+      : lastSeen === 'over12mo' || lastBloodTest === 'over12mo' || lastBloodTest === 'never'
+        ? 'This patient has not been seen or tested for over 12 months — urgent review is required.'
+        : 'This patient\'s HbA1c is significantly elevated — urgent diabetes review is required.';
+
+  const reviewDesc = amberCount > 1
+    ? `${amberCount} factors suggest this patient's diabetes management needs review.`
+    : !onMedication
+      ? 'This patient is not currently on diabetes medication — a GP review is advisable.'
+      : diet === 'poor'
+        ? 'This patient reports a poor diet, which may be affecting diabetes control.'
+        : 'This patient\'s diabetes management could be improved in one or more areas.';
+
+  if (urgent) return { light:'red',   color:'#b91c1c', bg:'#fee2e2', border:'#fca5a5', title:'Urgent Review Needed',  description: urgentDesc, advice:'Refer urgently to the patient\'s GP or diabetes care team. Do not delay.' };
+  if (review) return { light:'amber', color:'#c2410c', bg:'#ffedd5', border:'#fdba74', title:'Review Recommended',    description: reviewDesc, advice:'Recommend the patient books a diabetes review appointment with their GP or diabetes nurse soon.' };
+  return           { light:'green', color:'#15803d', bg:'#dcfce7', border:'#86efac', title:'Well Controlled',         description:'This patient\'s diabetes appears well managed across all areas assessed.', advice:'Encourage continued adherence to medication, diet, and exercise. Annual GP review recommended.' };
+}
+
 // ─── Framingham calculation (D'Agostino 2008) ────────────────────────────────
 // Cholesterol inputs in mmol/L; internally converted to mg/dL.
 // Population averages used when cholesterol not entered:
@@ -297,11 +343,35 @@ function HomeScreen({ onStart }) {
 // ─── FINDRISC form ────────────────────────────────────────────────────────────
 
 function FindriscForm({ onBack, onResult }) {
-  const [answers, setAnswers] = useState({});
-  const [calcHov, setCalcHov] = useState(false);
+  const [answers,   setAnswers]   = useState({});
+  const [calcHov,   setCalcHov]   = useState(false);
+  const [heightCm,  setHeightCm]  = useState('');
+  const [weightKg,  setWeightKg]  = useState('');
+  const [trouserIn, setTrouserIn] = useState('');
+
   const answered = Object.keys(answers).length;
   const total    = FINDRISC_QUESTIONS.length;
   const allDone  = answered === total;
+
+  const autoSelectBMI = (h, w) => {
+    const hN = parseFloat(h), wN = parseFloat(w);
+    if (hN > 0 && wN > 0) {
+      const bmi = wN / Math.pow(hN / 100, 2);
+      setAnswers(p => ({ ...p, bmi: bmi < 25 ? 0 : bmi <= 30 ? 1 : 2 }));
+    }
+  };
+  const handleHeightChange = v => { setHeightCm(v);  autoSelectBMI(v, weightKg); };
+  const handleWeightChange = v => { setWeightKg(v);  autoSelectBMI(heightCm, v); };
+  const handleTrouserChange = v => {
+    setTrouserIn(v);
+    const n = parseInt(v, 10);
+    if (!isNaN(n) && n > 0) setAnswers(p => ({ ...p, waist: n <= 30 ? 0 : n <= 34 ? 1 : 2 }));
+  };
+
+  const bmiVal = (() => {
+    const hN = parseFloat(heightCm), wN = parseFloat(weightKg);
+    return hN > 0 && wN > 0 ? (wN / Math.pow(hN / 100, 2)).toFixed(1) : null;
+  })();
 
   const handleCalculate = () => {
     const score = FINDRISC_QUESTIONS.reduce((s, q) => {
@@ -333,6 +403,42 @@ function FindriscForm({ onBack, onResult }) {
                 {q.options.map((opt, oi) => (
                   <OptionButton key={oi} label={opt.label} score={opt.score} selected={answers[q.id] === oi} onClick={() => setAnswers(p => ({ ...p, [q.id]: oi }))} />
                 ))}
+
+                {q.id === 'bmi' && (
+                  <div style={{ marginTop:'10px', padding:'14px 16px', backgroundColor:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0' }}>
+                    <p style={{ margin:'0 0 10px', fontSize:'0.72rem', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>BMI Calculator (optional)</p>
+                    <div style={{ display:'flex', gap:'12px', alignItems:'flex-end', flexWrap:'wrap' }}>
+                      <div>
+                        <p style={{ margin:'0 0 4px', fontSize:'0.75rem', color:'#64748b' }}>Height</p>
+                        <StyledNumberInput value={heightCm} onChange={handleHeightChange} placeholder="e.g. 170" min={100} max={250} unit="cm" />
+                      </div>
+                      <div>
+                        <p style={{ margin:'0 0 4px', fontSize:'0.75rem', color:'#64748b' }}>Weight</p>
+                        <StyledNumberInput value={weightKg} onChange={handleWeightChange} placeholder="e.g. 75" min={20} max={300} unit="kg" />
+                      </div>
+                      {bmiVal && (
+                        <div style={{ padding:'9px 16px', backgroundColor:'#eff6ff', borderRadius:'8px', border:`1px solid ${BLUE}`, textAlign:'center' }}>
+                          <p style={{ margin:'0 0 2px', fontSize:'0.72rem', color:'#64748b' }}>BMI</p>
+                          <p style={{ margin:0, fontSize:'1.25rem', fontWeight:800, color:BLUE, lineHeight:1 }}>{bmiVal}</p>
+                        </div>
+                      )}
+                    </div>
+                    {bmiVal && <p style={{ margin:'8px 0 0', fontSize:'0.72rem', color:'#94a3b8' }}>BMI {bmiVal} kg/m² — option auto-selected above</p>}
+                  </div>
+                )}
+
+                {q.id === 'waist' && (
+                  <div style={{ marginTop:'10px', padding:'14px 16px', backgroundColor:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0' }}>
+                    <p style={{ margin:'0 0 10px', fontSize:'0.72rem', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>Trouser Size Helper (optional)</p>
+                    <div style={{ display:'flex', gap:'12px', alignItems:'flex-end' }}>
+                      <div>
+                        <p style={{ margin:'0 0 4px', fontSize:'0.75rem', color:'#64748b' }}>Trouser / pant size</p>
+                        <StyledNumberInput value={trouserIn} onChange={handleTrouserChange} placeholder="e.g. 34" min={20} max={60} unit="inches" />
+                      </div>
+                    </div>
+                    {trouserIn && <p style={{ margin:'8px 0 0', fontSize:'0.72rem', color:'#94a3b8' }}>Size {trouserIn}" — waist category auto-selected above</p>}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -625,88 +731,135 @@ const LIFESTYLE_ADVICE = [
   'Rescreen for diabetes and cardiovascular risk in 1–2 years.',
 ];
 
-function ResultsSummary({ findriscScore, framinghamResult, onStartNew, onGenerateReferral }) {
-  const { risk: framinghamRisk, estimated, sex } = framinghamResult;
-  const findriscInfo = getRiskInfo(findriscScore);
-  const cardioInfo   = getCardioRiskInfo(framinghamRisk);
-  const referralNeeded = findriscScore >= 15 || framinghamRisk >= 10;
+function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, onStartNew, onGenerateReferral }) {
+  const [refHov, setRefHov] = useState(false);
+  const [newHov, setNewHov] = useState(false);
+
+  // Diabetes info
+  const findriscInfo = !knownDiabetic && findriscScore !== null ? getRiskInfo(findriscScore) : null;
+  const tl           = knownDiabetic && diabetesControl ? getDiabetesTrafficLight(diabetesControl) : null;
+
+  // CVD info
+  const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk : null;
+  const estimated      = !knownCVD && framinghamResult ? framinghamResult.estimated : false;
+  const sex            = !knownCVD && framinghamResult ? framinghamResult.sex : null;
+  const cardioInfo     = framinghamRisk !== null ? getCardioRiskInfo(framinghamRisk) : { level:'High Risk', color:'#b91c1c', bannerBg:'#fee2e2', bannerBorder:'#fca5a5', bg:'#fee2e2', border:'#fca5a5' };
+
+  // Referral logic
+  const diabetesReferral = knownDiabetic ? (tl && tl.light !== 'green') : (findriscScore !== null && findriscScore >= 15);
+  const cvdReferral      = knownCVD || (framinghamRisk !== null && framinghamRisk >= 10);
+  const referralNeeded   = diabetesReferral || cvdReferral;
 
   const referralReasons = [];
-  if (findriscScore >= 15)
+  if (knownDiabetic && tl && tl.light !== 'green')
+    referralReasons.push(`Diabetes control assessment: ${tl.title} — ${tl.advice}`);
+  else if (!knownDiabetic && findriscScore !== null && findriscScore >= 15)
     referralReasons.push(`FINDRISC score of ${findriscScore}/26 (${findriscInfo.level}) — refer for fasting blood glucose or HbA1c testing and consideration of a diabetes prevention programme.`);
-  if (framinghamRisk >= 20)
+  if (knownCVD)
+    referralReasons.push('Known cardiovascular disease — urgent review of secondary prevention medications and cardiovascular management by a physician is recommended.');
+  else if (framinghamRisk !== null && framinghamRisk >= 20)
     referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (High Risk) — refer for full lipid profile and cardiovascular risk management, including consideration of statin therapy.`);
-  else if (framinghamRisk >= 10)
+  else if (framinghamRisk !== null && framinghamRisk >= 10)
     referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (Intermediate Risk) — refer for full lipid profile review and cardiovascular risk factor management.`);
 
-  const [refHov, setRefHov]   = useState(false);
-  const [newHov, setNewHov]   = useState(false);
+  // Narrative text
+  const narrativeText = (() => {
+    if (knownDiabetic && knownCVD)
+      return `This patient has confirmed diabetes and known cardiovascular disease — both are significant risk factors requiring coordinated medical management. Urgent physician referral is recommended.`;
+    if (knownDiabetic && framinghamRisk !== null)
+      return `This patient has confirmed diabetes. Their 10-year cardiovascular risk is ${framinghamRisk}% (${cardioInfo.level}). These conditions are closely linked and require coordinated physician management.`;
+    if (knownCVD && findriscScore !== null)
+      return `This patient has known cardiovascular disease and a FINDRISC score of ${findriscScore}/26 (${findriscInfo ? findriscInfo.level : ''}). Comprehensive cardiovascular and metabolic management is strongly recommended.`;
+    if (knownCVD && knownDiabetic)
+      return `This patient has both confirmed diabetes and known cardiovascular disease. Urgent physician referral for comprehensive NCD management is required.`;
+    if (findriscScore !== null && framinghamRisk !== null)
+      return combinedNarrativeText(findriscScore, framinghamRisk);
+    return 'Screening complete. Please review the results above and advise the patient accordingly.';
+  })();
 
   return (
     <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
       <PageHeader subtitle="Screening Complete" />
-
       <div style={{ maxWidth:'680px', margin:'0 auto', padding:'36px 24px 72px' }}>
-
-        {/* Title */}
         <div style={{ marginBottom:'28px' }}>
           <h2 style={{ margin:'0 0 6px', fontSize:'1.5rem', fontWeight:800, color:'#0f172a' }}>Screening Summary</h2>
-          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Both assessments complete</p>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Assessments complete</p>
         </div>
 
-        {/* Score cards — side by side */}
+        {/* Score cards */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'20px' }}>
 
-          {/* FINDRISC card */}
-          <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${findriscInfo.bannerBorder}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
-            <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:findriscInfo.color, borderRadius:'16px 16px 0 0' }} />
-            <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>FINDRISC</p>
-            <p style={{ margin:0, fontSize:'2.75rem', fontWeight:900, color:findriscInfo.color, lineHeight:1, letterSpacing:'-0.03em' }}>{findriscScore}</p>
-            <p style={{ margin:'3px 0 16px', fontSize:'0.75rem', color:'#94a3b8', fontWeight:500 }}>out of 26</p>
-            <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:findriscInfo.bannerBg, borderRadius:'8px', border:`1px solid ${findriscInfo.bannerBorder}` }}>
-              <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:findriscInfo.color, flexShrink:0 }} />
-              <span style={{ fontSize:'0.72rem', fontWeight:700, color:findriscInfo.color }}>{findriscInfo.level}</span>
+          {/* Diabetes card */}
+          {knownDiabetic && tl ? (
+            <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${tl.border}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
+              <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:tl.color, borderRadius:'16px 16px 0 0' }} />
+              <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Diabetes Control</p>
+              <p style={{ margin:'0 0 16px', fontSize:'1.0625rem', fontWeight:800, color:tl.color, lineHeight:1.3 }}>{tl.title}</p>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:tl.bg, borderRadius:'8px', border:`1px solid ${tl.border}` }}>
+                <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:tl.color, flexShrink:0 }} />
+                <span style={{ fontSize:'0.72rem', fontWeight:700, color:tl.color }}>Known Diabetic</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            findriscInfo && (
+              <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${findriscInfo.bannerBorder}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
+                <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:findriscInfo.color, borderRadius:'16px 16px 0 0' }} />
+                <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>FINDRISC</p>
+                <p style={{ margin:0, fontSize:'2.75rem', fontWeight:900, color:findriscInfo.color, lineHeight:1, letterSpacing:'-0.03em' }}>{findriscScore}</p>
+                <p style={{ margin:'3px 0 16px', fontSize:'0.75rem', color:'#94a3b8', fontWeight:500 }}>out of 26</p>
+                <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:findriscInfo.bannerBg, borderRadius:'8px', border:`1px solid ${findriscInfo.bannerBorder}` }}>
+                  <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:findriscInfo.color, flexShrink:0 }} />
+                  <span style={{ fontSize:'0.72rem', fontWeight:700, color:findriscInfo.color }}>{findriscInfo.level}</span>
+                </div>
+              </div>
+            )
+          )}
 
-          {/* Framingham card */}
-          <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${cardioInfo.bannerBorder}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
-            <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:cardioInfo.color, borderRadius:'16px 16px 0 0' }} />
-            <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Cardiovascular</p>
-            <p style={{ margin:0, fontSize:'2.75rem', fontWeight:900, color:cardioInfo.color, lineHeight:1, letterSpacing:'-0.03em' }}>{framinghamRisk}%</p>
-            <p style={{ margin:'3px 0 16px', fontSize:'0.75rem', color:'#94a3b8', fontWeight:500 }}>10-year risk · {sex === 'male' ? 'Male' : 'Female'}{estimated ? ' · estimated' : ''}</p>
-            <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:cardioInfo.bannerBg, borderRadius:'8px', border:`1px solid ${cardioInfo.bannerBorder}` }}>
-              <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:cardioInfo.color, flexShrink:0 }} />
-              <span style={{ fontSize:'0.72rem', fontWeight:700, color:cardioInfo.color }}>{cardioInfo.level}</span>
+          {/* CVD card */}
+          {knownCVD ? (
+            <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:'1px solid #fca5a5', boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
+              <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:'#b91c1c', borderRadius:'16px 16px 0 0' }} />
+              <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Cardiovascular</p>
+              <p style={{ margin:'0 0 16px', fontSize:'1.0625rem', fontWeight:800, color:'#b91c1c', lineHeight:1.3 }}>Known CVD</p>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:'#fee2e2', borderRadius:'8px', border:'1px solid #fca5a5' }}>
+                <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:'#b91c1c', flexShrink:0 }} />
+                <span style={{ fontSize:'0.72rem', fontWeight:700, color:'#b91c1c' }}>High Risk</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            framinghamRisk !== null && (
+              <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${cardioInfo.bannerBorder}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
+                <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:cardioInfo.color, borderRadius:'16px 16px 0 0' }} />
+                <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Cardiovascular</p>
+                <p style={{ margin:0, fontSize:'2.75rem', fontWeight:900, color:cardioInfo.color, lineHeight:1, letterSpacing:'-0.03em' }}>{framinghamRisk}%</p>
+                <p style={{ margin:'3px 0 16px', fontSize:'0.75rem', color:'#94a3b8', fontWeight:500 }}>10-year risk · {sex === 'male' ? 'Male' : 'Female'}{estimated ? ' · estimated' : ''}</p>
+                <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:cardioInfo.bannerBg, borderRadius:'8px', border:`1px solid ${cardioInfo.bannerBorder}` }}>
+                  <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:cardioInfo.color, flexShrink:0 }} />
+                  <span style={{ fontSize:'0.72rem', fontWeight:700, color:cardioInfo.color }}>{cardioInfo.level}</span>
+                </div>
+              </div>
+            )
+          )}
         </div>
 
-        {/* Combined clinical recommendation */}
+        {/* Combined narrative */}
         <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'22px 24px', border:'1px solid #e2e8f0', boxShadow:'0 2px 8px rgba(15,23,42,0.04)', marginBottom:'20px' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'12px' }}>
             <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'28px', height:'28px', borderRadius:'8px', backgroundColor:'#eff6ff', flexShrink:0 }}>
-              <svg width="14" height="14" viewBox="0 0 20 20" fill={BLUE}>
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/>
-              </svg>
+              <svg width="14" height="14" viewBox="0 0 20 20" fill={BLUE}><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/></svg>
             </div>
             <p style={{ margin:0, fontSize:'0.875rem', fontWeight:700, color:'#0f172a' }}>Combined Clinical Assessment</p>
           </div>
-          <p style={{ margin:0, fontSize:'0.9rem', color:'#334155', lineHeight:1.75 }}>
-            {combinedNarrativeText(findriscScore, framinghamRisk)}
-          </p>
+          <p style={{ margin:0, fontSize:'0.9rem', color:'#334155', lineHeight:1.75 }}>{narrativeText}</p>
         </div>
 
-        {/* Referral / no-referral section */}
+        {/* Referral / no-referral */}
         {referralNeeded ? (
           <>
-            {/* Red referral banner */}
             <div style={{ backgroundColor:'#fef2f2', border:'1px solid #fca5a5', borderRadius:'14px', padding:'20px 24px', marginBottom:'16px' }}>
               <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'14px' }}>
                 <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#dc2626', flexShrink:0 }}>
-                  <svg width="15" height="15" viewBox="0 0 20 20" fill="white">
-                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
-                  </svg>
+                  <svg width="15" height="15" viewBox="0 0 20 20" fill="white"><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/></svg>
                 </div>
                 <p style={{ margin:0, fontSize:'1.0625rem', fontWeight:700, color:'#b91c1c' }}>Referral Recommended</p>
               </div>
@@ -719,30 +872,20 @@ function ResultsSummary({ findriscScore, framinghamResult, onStartNew, onGenerat
                 ))}
               </div>
             </div>
-
-            {/* Generate Referral Letter button */}
-            <button
-              onClick={onGenerateReferral}
-              onMouseOver={() => setRefHov(true)}
-              onMouseOut={() => setRefHov(false)}
+            <button onClick={onGenerateReferral} onMouseOver={() => setRefHov(true)} onMouseOut={() => setRefHov(false)}
               style={{ width:'100%', padding:'18px 24px', border:'none', borderRadius:'12px', backgroundColor: refHov ? '#1558a8' : BLUE, color:'#ffffff', fontSize:'1.0625rem', fontWeight:700, cursor:'pointer', boxShadow: refHov ? '0 6px 20px rgba(29,111,206,0.45)' : '0 4px 16px rgba(29,111,206,0.3)', transition:'background-color 140ms ease, box-shadow 140ms ease', fontFamily:font, marginBottom:'12px' }}>
               Generate Referral Letter
             </button>
           </>
         ) : (
-          /* Green no-referral banner */
           <div style={{ backgroundColor:'#f0fdf4', border:'1px solid #86efac', borderRadius:'14px', padding:'20px 24px', marginBottom:'16px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'14px' }}>
               <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#16a34a', flexShrink:0 }}>
-                <svg width="15" height="15" viewBox="0 0 20 20" fill="white">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
-                </svg>
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="white"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
               </div>
               <p style={{ margin:0, fontSize:'1.0625rem', fontWeight:700, color:'#15803d' }}>No Referral Required</p>
             </div>
-            <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#166534', lineHeight:1.65 }}>
-              Both assessments are within the low-risk range. Share the following lifestyle advice with the patient.
-            </p>
+            <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#166534', lineHeight:1.65 }}>Both assessments are within the low-risk range. Share the following lifestyle advice with the patient.</p>
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
               {LIFESTYLE_ADVICE.map((advice, i) => (
                 <div key={i} style={{ display:'flex', gap:'10px', alignItems:'flex-start' }}>
@@ -754,11 +897,7 @@ function ResultsSummary({ findriscScore, framinghamResult, onStartNew, onGenerat
           </div>
         )}
 
-        {/* Start New Screening */}
-        <button
-          onClick={onStartNew}
-          onMouseOver={() => setNewHov(true)}
-          onMouseOut={() => setNewHov(false)}
+        <button onClick={onStartNew} onMouseOver={() => setNewHov(true)} onMouseOut={() => setNewHov(false)}
           style={{ width:'100%', padding:'16px 24px', border:`2px solid ${newHov ? '#16a34a' : '#e2e8f0'}`, borderRadius:'12px', backgroundColor: newHov ? '#f0fdf4' : '#ffffff', color: newHov ? '#15803d' : '#475569', fontSize:'1rem', fontWeight:600, cursor:'pointer', transition:'border-color 140ms ease, background-color 140ms ease, color 140ms ease', fontFamily:font }}>
           Start New Screening
         </button>
@@ -769,31 +908,46 @@ function ResultsSummary({ findriscScore, framinghamResult, onStartNew, onGenerat
 
 // ─── Referral letter ─────────────────────────────────────────────────────────
 
-function getLetterRecommendations(findriscScore, framinghamRisk) {
+function getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds }) {
   const recs = [];
-  if (findriscScore >= 15) {
+  if (knownDiabetic && diabetesControl) {
+    const tl = getDiabetesTrafficLight(diabetesControl);
+    if (tl.light === 'red')   recs.push('Urgent diabetes review — the patient has not seen a doctor for diabetes care in over 12 months, has known complications, and/or has an HbA1c above 9%. Immediate GP or diabetes team referral is required.');
+    else if (tl.light === 'amber') recs.push('Diabetes review recommended — the patient\'s last diabetes appointment was 3–12 months ago and/or HbA1c is borderline elevated. A prompt review appointment with the GP or diabetes nurse is advised.');
+    else recs.push('Diabetes appears well controlled. Continued adherence to management plan and annual GP review recommended.');
+  } else if (!knownDiabetic && findriscScore !== null && findriscScore >= 15) {
     recs.push('Fasting plasma glucose and/or HbA1c measurement to screen for type 2 diabetes or pre-diabetes.');
     recs.push('Referral for a structured diabetes prevention programme or intensive lifestyle intervention.');
     recs.push('Assessment of modifiable risk factors including dietary habits, physical activity level, and body weight.');
   }
-  if (framinghamRisk >= 20) {
-    recs.push('Urgent fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides).');
-    recs.push('12-lead ECG and further cardiovascular investigation as clinically indicated.');
-    recs.push('Consideration of statin therapy and/or optimisation of antihypertensive medication as clinically appropriate.');
-    recs.push('Reinforcement of cardiovascular risk-reducing lifestyle modifications.');
-  } else if (framinghamRisk >= 10) {
-    recs.push('Fasting lipid profile to obtain precise cardiovascular risk data and guide management.');
-    recs.push('Review of blood pressure control and treatment optimisation if indicated.');
-    recs.push('Lifestyle counselling focused on diet, physical activity, and smoking cessation where applicable.');
+  if (knownCVD && cvdMeds) {
+    recs.push('Review and optimisation of secondary prevention therapy for established cardiovascular disease.');
+    if (!cvdMeds.aspirin) recs.push('Consideration of aspirin or antiplatelet therapy — not currently prescribed.');
+    if (!cvdMeds.statin)  recs.push('Initiation or review of statin therapy for cardiovascular risk reduction — not currently prescribed.');
+    if (!cvdMeds.bpMeds)  recs.push('Blood pressure management review — antihypertensive therapy not currently prescribed.');
+    recs.push('Cardiac follow-up and ongoing cardiovascular risk management.');
+  } else if (!knownCVD && framinghamRisk !== null) {
+    if (framinghamRisk >= 20) {
+      recs.push('Urgent fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides).');
+      recs.push('12-lead ECG and further cardiovascular investigation as clinically indicated.');
+      recs.push('Consideration of statin therapy and/or optimisation of antihypertensive medication as clinically appropriate.');
+      recs.push('Reinforcement of cardiovascular risk-reducing lifestyle modifications.');
+    } else if (framinghamRisk >= 10) {
+      recs.push('Fasting lipid profile to obtain precise cardiovascular risk data and guide management.');
+      recs.push('Review of blood pressure control and treatment optimisation if indicated.');
+      recs.push('Lifestyle counselling focused on diet, physical activity, and smoking cessation where applicable.');
+    }
   }
   return recs;
 }
 
-function ReferralLetter({ findriscScore, framinghamResult, onBack }) {
-  const { risk: framinghamRisk, estimated } = framinghamResult;
-  const findriscInfo = getRiskInfo(findriscScore);
-  const cardioInfo   = getCardioRiskInfo(framinghamRisk);
-  const recs         = getLetterRecommendations(findriscScore, framinghamRisk);
+function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, onBack }) {
+  const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk     : null;
+  const estimated      = !knownCVD && framinghamResult ? framinghamResult.estimated : false;
+  const findriscInfo   = !knownDiabetic && findriscScore !== null ? getRiskInfo(findriscScore) : null;
+  const cardioInfo     = framinghamRisk !== null ? getCardioRiskInfo(framinghamRisk) : null;
+  const tl             = knownDiabetic && diabetesControl ? getDiabetesTrafficLight(diabetesControl) : null;
+  const recs           = getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds });
 
   const [pharmacyName,    setPharmacyName]    = useState('');
   const [pharmacistName,  setPharmacistName]  = useState('');
@@ -922,28 +1076,58 @@ function ReferralLetter({ findriscScore, framinghamResult, onBack }) {
               I am writing to refer a patient who attended <strong>{displayPharmacy}</strong> on {today} for a non-communicable disease (NCD) risk screening using the PharmaScan clinical decision support tool. The following validated published screening instruments were administered.
             </p>
 
-            {/* FINDRISC section */}
+            {/* Diabetes section */}
             <div style={{ marginBottom: '24px' }}>
-              <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: findriscInfo.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                Diabetes Risk — FINDRISC Score: {findriscScore}/26
-              </p>
-              <div style={{ borderLeft: `3px solid ${findriscInfo.color}`, paddingLeft: '16px' }}>
-                <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
-                  The Finnish Diabetes Risk Score (FINDRISC) was calculated as <strong>{findriscScore} out of 26</strong>, placing this patient in the <strong>{findriscInfo.level}</strong> category. This corresponds to an estimated <strong>{findriscInfo.probability}</strong>.
-                </p>
-              </div>
+              {knownDiabetic && tl ? (
+                <>
+                  <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: tl.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Diabetes Control Assessment — {tl.title}
+                  </p>
+                  <div style={{ borderLeft: `3px solid ${tl.color}`, paddingLeft: '16px' }}>
+                    <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
+                      This patient has a confirmed diagnosis of diabetes. A diabetes control assessment conducted using PharmaScan indicates: <strong>{tl.title}</strong>. {tl.description}
+                    </p>
+                  </div>
+                </>
+              ) : findriscInfo && findriscScore !== null && (
+                <>
+                  <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: findriscInfo.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Diabetes Risk — FINDRISC Score: {findriscScore}/26
+                  </p>
+                  <div style={{ borderLeft: `3px solid ${findriscInfo.color}`, paddingLeft: '16px' }}>
+                    <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
+                      The Finnish Diabetes Risk Score (FINDRISC) was calculated as <strong>{findriscScore} out of 26</strong>, placing this patient in the <strong>{findriscInfo.level}</strong> category. This corresponds to an estimated <strong>{findriscInfo.probability}</strong>.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Framingham section */}
+            {/* CVD section */}
             <div style={{ marginBottom: '28px' }}>
-              <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: cardioInfo.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                Cardiovascular Risk — Framingham Risk Score: {framinghamRisk}%
-              </p>
-              <div style={{ borderLeft: `3px solid ${cardioInfo.color}`, paddingLeft: '16px' }}>
-                <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
-                  Using the Framingham Risk Score (D'Agostino <em>et al.</em>, 2008), this patient's estimated 10-year risk of a major cardiovascular event is <strong>{framinghamRisk}%</strong>, placing them in the <strong>{cardioInfo.level}</strong> category.{estimated && <> <em>Note: cholesterol values were unavailable at the time of screening; population average values were applied in this calculation.</em></>}
-                </p>
-              </div>
+              {knownCVD ? (
+                <>
+                  <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: '#b91c1c', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Cardiovascular Risk — Known Heart Disease
+                  </p>
+                  <div style={{ borderLeft: '3px solid #b91c1c', paddingLeft: '16px' }}>
+                    <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
+                      This patient has a known history of cardiovascular disease (previous heart attack or diagnosed heart condition). The Framingham risk model was therefore not applied. Secondary prevention medication review was conducted and findings are detailed in the recommendations below.
+                    </p>
+                  </div>
+                </>
+              ) : cardioInfo && framinghamRisk !== null && (
+                <>
+                  <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: cardioInfo.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Cardiovascular Risk — Framingham Risk Score: {framinghamRisk}%
+                  </p>
+                  <div style={{ borderLeft: `3px solid ${cardioInfo.color}`, paddingLeft: '16px' }}>
+                    <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
+                      Using the Framingham Risk Score (D'Agostino <em>et al.</em>, 2008), this patient's estimated 10-year risk of a major cardiovascular event is <strong>{framinghamRisk}%</strong>, placing them in the <strong>{cardioInfo.level}</strong> category.{estimated && <> <em>Note: cholesterol values were unavailable at the time of screening; population average values were applied in this calculation.</em></>}
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Recommendations */}
@@ -1010,22 +1194,361 @@ function ReferralLetter({ findriscScore, framinghamResult, onBack }) {
   );
 }
 
+// ─── Pre-screen (known diabetic?) ────────────────────────────────────────────
+
+function PreScreen({ onBack, onKnownDiabetic, onNotDiabetic }) {
+  return (
+    <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
+      <PageHeader subtitle="Pre-Screening Check" onBack={onBack} />
+      <div style={{ maxWidth:'560px', margin:'0 auto', padding:'48px 24px' }}>
+        <div style={{ backgroundColor:'#ffffff', borderRadius:'20px', padding:'36px 32px', boxShadow:'0 4px 24px rgba(15,23,42,0.08)', border:'1px solid #e2e8f0' }}>
+          <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'48px', height:'48px', borderRadius:'14px', backgroundColor:'#eff6ff', marginBottom:'20px' }}>
+            <svg width="22" height="22" viewBox="0 0 20 20" fill={BLUE}><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/></svg>
+          </div>
+          <h2 style={{ margin:'0 0 10px', fontSize:'1.375rem', fontWeight:800, color:'#0f172a' }}>Pre-Screening Check</h2>
+          <p style={{ margin:'0 0 28px', fontSize:'1rem', fontWeight:600, color:'#334155', lineHeight:1.6 }}>Has this patient been diagnosed with diabetes?</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+            <button onClick={onKnownDiabetic} style={{ width:'100%', padding:'16px 24px', border:'2px solid #e2e8f0', borderRadius:'12px', backgroundColor:'#ffffff', color:'#334155', fontSize:'1rem', fontWeight:600, cursor:'pointer', textAlign:'left', fontFamily:font }}
+              onMouseOver={e => { e.currentTarget.style.borderColor=BLUE; e.currentTarget.style.backgroundColor='#eff6ff'; e.currentTarget.style.color=BLUE; }}
+              onMouseOut={e  => { e.currentTarget.style.borderColor='#e2e8f0'; e.currentTarget.style.backgroundColor='#ffffff'; e.currentTarget.style.color='#334155'; }}>
+              Yes — this patient has diabetes
+            </button>
+            <button onClick={onNotDiabetic} style={{ width:'100%', padding:'16px 24px', border:'2px solid #e2e8f0', borderRadius:'12px', backgroundColor:'#ffffff', color:'#334155', fontSize:'1rem', fontWeight:600, cursor:'pointer', textAlign:'left', fontFamily:font }}
+              onMouseOver={e => { e.currentTarget.style.borderColor='#16a34a'; e.currentTarget.style.backgroundColor='#f0fdf4'; e.currentTarget.style.color='#15803d'; }}
+              onMouseOut={e  => { e.currentTarget.style.borderColor='#e2e8f0'; e.currentTarget.style.backgroundColor='#ffffff'; e.currentTarget.style.color='#334155'; }}>
+              No — screening for diabetes risk
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Diabetes control screen ──────────────────────────────────────────────────
+
+function DiabetesControlScreen({ onBack, onResult }) {
+  const [lastSeen,      setLastSeen]      = useState(null);
+  const [lastBloodTest, setLastBloodTest] = useState(null);
+  const [hba1c,         setHba1c]         = useState('');
+  const [homeChecks,    setHomeChecks]    = useState(null);
+  const [onMedication,  setOnMedication]  = useState(null);
+  const [medType,       setMedType]       = useState(null);
+  const [diet,          setDiet]          = useState(null);
+  const [exercise,      setExercise]      = useState(null);
+  const [complications, setComplications] = useState(null);
+  const [calcHov,       setCalcHov]       = useState(false);
+
+  const hba1cN   = hba1c ? parseFloat(hba1c) : null;
+  const hba1cErr = hba1c && (hba1cN < 4 || hba1cN > 20) ? 'Enter a value between 4 and 20%' : null;
+
+  const required     = [lastSeen, lastBloodTest, homeChecks, onMedication, diet, exercise, complications];
+  const answeredCount = required.filter(v => v !== null).length;
+  const canContinue  = answeredCount === 7 && !hba1cErr;
+
+  const mkRadio = (opts, val, setter) => (
+    <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+      {opts.map(opt => (
+        <button key={opt.value} onClick={() => setter(opt.value)}
+          style={{ width:'100%', padding:'12px 16px', border:`2px solid ${val === opt.value ? BLUE : '#e2e8f0'}`, borderRadius:'10px', backgroundColor: val === opt.value ? '#eff6ff' : '#ffffff', color: val === opt.value ? BLUE : '#334155', fontWeight: val === opt.value ? 600 : 400, fontSize:'0.9375rem', cursor:'pointer', textAlign:'left', fontFamily:font, transition:'border-color 120ms ease, background-color 120ms ease' }}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
+      <PageHeader subtitle="Diabetes Control Assessment" onBack={onBack} />
+      <ProgressBar pct={Math.round(answeredCount / 7 * 100)} />
+      <div style={{ maxWidth:'680px', margin:'0 auto', padding:'32px 24px 48px' }}>
+        <div style={{ marginBottom:'28px' }}>
+          <h2 style={{ margin:'0 0 6px', fontSize:'1.5rem', fontWeight:800, color:'#0f172a' }}>Diabetes Control Check</h2>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Questions about this patient's diabetes management — {answeredCount} of 7 answered</p>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+
+          {/* Q1 — Last doctor visit */}
+          <FormCard number={1} label="When did this patient last see a doctor for their diabetes?" answered={lastSeen !== null}>
+            {mkRadio([
+              { value:'within3mo', label:'Within the last 3 months' },
+              { value:'3to12mo',   label:'3–12 months ago' },
+              { value:'over12mo',  label:'More than 12 months ago' },
+            ], lastSeen, setLastSeen)}
+          </FormCard>
+
+          {/* Q2 — Last blood test + optional HbA1c */}
+          <FormCard number={2} label="When did this patient last have a blood test for their diabetes?" answered={lastBloodTest !== null}>
+            {mkRadio([
+              { value:'within3mo', label:'Within the last 3 months' },
+              { value:'3to12mo',   label:'3–12 months ago' },
+              { value:'over12mo',  label:'More than 12 months ago' },
+              { value:'never',     label:'Never / not sure' },
+            ], lastBloodTest, setLastBloodTest)}
+            {lastBloodTest && lastBloodTest !== 'never' && (
+              <div style={{ marginTop:'14px', padding:'14px 16px', backgroundColor:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0' }}>
+                <p style={{ margin:'0 0 4px', fontSize:'0.72rem', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>HbA1c result (optional)</p>
+                <p style={{ margin:'0 0 12px', fontSize:'0.78rem', color:'#94a3b8', lineHeight:1.5 }}>Enter the most recent HbA1c if available for a more precise assessment.</p>
+                <StyledNumberInput value={hba1c} onChange={setHba1c} placeholder="e.g. 7.2" unit="%" min={4} max={20} />
+                <FieldError msg={hba1cErr} />
+              </div>
+            )}
+          </FormCard>
+
+          {/* Q3 — Home blood sugar checks */}
+          <FormCard number={3} label="How often does this patient check their blood sugar at home?" answered={homeChecks !== null}>
+            {mkRadio([
+              { value:'daily',   label:'Daily' },
+              { value:'weekly',  label:'A few times a week' },
+              { value:'monthly', label:'Occasionally (monthly or less)' },
+              { value:'rarely',  label:'Rarely' },
+              { value:'never',   label:'Never' },
+            ], homeChecks, setHomeChecks)}
+          </FormCard>
+
+          {/* Q4 — Medication */}
+          <FormCard number={4} label="Is this patient currently on diabetes medication?" answered={onMedication !== null}>
+            <BinarySelector value={onMedication} onChange={v => { setOnMedication(v); if (!v) setMedType(null); }} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+            {onMedication === true && (
+              <div style={{ marginTop:'14px' }}>
+                <p style={{ margin:'0 0 8px', fontSize:'0.82rem', color:'#64748b', fontWeight:500 }}>What type? (optional)</p>
+                {mkRadio([
+                  { value:'metformin', label:'Tablets only (e.g. metformin, glipizide)' },
+                  { value:'insulin',   label:'Insulin only' },
+                  { value:'both',      label:'Both tablets and insulin' },
+                  { value:'other',     label:'Other medication' },
+                ], medType, setMedType)}
+              </div>
+            )}
+            {onMedication === false && (
+              <p style={{ margin:'10px 0 0', fontSize:'0.78rem', color:'#94a3b8', lineHeight:1.5 }}>Diet-controlled or recently diagnosed. A medication review with the GP may be appropriate.</p>
+            )}
+          </FormCard>
+
+          {/* Q5 — Diet */}
+          <FormCard number={5} label="How would you describe this patient's diet?" answered={diet !== null}>
+            {mkRadio([
+              { value:'good', label:'Good — mostly healthy, low sugar and fat' },
+              { value:'fair', label:'Fair — mixed, with some unhealthy choices' },
+              { value:'poor', label:'Poor — frequent sugary or high-fat foods' },
+            ], diet, setDiet)}
+          </FormCard>
+
+          {/* Q6 — Exercise */}
+          <FormCard number={6} label="Does this patient exercise at least 3 times a week?" hint="Any activity — walking, swimming, cycling, or gym" answered={exercise !== null}>
+            <BinarySelector value={exercise} onChange={setExercise} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+
+          {/* Q7 — Complications */}
+          <FormCard number={7} label="Does this patient have any known diabetes complications?" hint="e.g. eye, kidney, nerve, or foot problems" answered={complications !== null}>
+            <BinarySelector value={complications} onChange={setComplications} options={[{ value:false, label:'No' }, { value:true, label:'Yes' }]} />
+          </FormCard>
+
+        </div>
+
+        <div style={{ marginTop:'32px' }}>
+          {!canContinue && <p style={{ textAlign:'center', fontSize:'0.82rem', color:'#94a3b8', marginBottom:'12px' }}>Answer all 7 questions to continue</p>}
+          <button onClick={canContinue ? () => onResult({ lastSeen, lastBloodTest, homeChecks, onMedication, medType, diet, exercise, complications, hba1c: hba1cN }) : undefined}
+            onMouseOver={() => canContinue && setCalcHov(true)} onMouseOut={() => setCalcHov(false)} disabled={!canContinue}
+            style={{ width:'100%', padding:'18px 24px', border:'none', borderRadius:'12px', backgroundColor: canContinue ? (calcHov ? '#15803d' : '#16a34a') : '#e2e8f0', color: canContinue ? '#ffffff' : '#94a3b8', fontSize:'1.0625rem', fontWeight:700, cursor: canContinue ? 'pointer' : 'not-allowed', boxShadow: canContinue ? '0 4px 16px rgba(22,163,74,0.35)' : 'none', fontFamily:font }}>
+            View Assessment →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Diabetes control result ──────────────────────────────────────────────────
+
+function DiabetesControlResult({ diabetesControl, onBack, onContinue }) {
+  const tl = getDiabetesTrafficLight(diabetesControl);
+  const lights = [
+    { c:'#ef4444', active: tl.light === 'red'   },
+    { c:'#f59e0b', active: tl.light === 'amber' },
+    { c:'#22c55e', active: tl.light === 'green' },
+  ];
+  return (
+    <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
+      <PageHeader subtitle="Diabetes Control Assessment" onBack={onBack} />
+      <div style={{ maxWidth:'560px', margin:'0 auto', padding:'40px 24px 64px' }}>
+        <div style={{ textAlign:'center', marginBottom:'32px' }}>
+          <p style={{ margin:'0 0 20px', fontSize:'0.8rem', fontWeight:600, letterSpacing:'0.08em', color:'#94a3b8', textTransform:'uppercase' }}>Diabetes Control</p>
+          <div style={{ display:'inline-flex', flexDirection:'column', alignItems:'center', gap:'10px', padding:'24px 28px', backgroundColor:'#ffffff', borderRadius:'20px', border:`2px solid ${tl.border}`, boxShadow:`0 8px 32px ${tl.border}80` }}>
+            {lights.map((l, i) => (
+              <div key={i} style={{ width: l.active ? '40px' : '24px', height: l.active ? '40px' : '24px', borderRadius:'50%', backgroundColor: l.active ? l.c : '#e2e8f0', transition:'all 200ms ease', boxShadow: l.active ? `0 0 16px ${l.c}80` : 'none' }} />
+            ))}
+          </div>
+        </div>
+        <div style={{ backgroundColor:tl.bg, border:`1px solid ${tl.border}`, borderRadius:'14px', padding:'18px 22px', marginBottom:'20px', display:'flex', alignItems:'center', gap:'12px' }}>
+          <div style={{ width:'10px', height:'10px', borderRadius:'50%', backgroundColor:tl.color, flexShrink:0 }} />
+          <p style={{ margin:0, fontSize:'1.0625rem', fontWeight:700, color:tl.color }}>{tl.title}</p>
+        </div>
+        <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'24px', border:'1px solid #e2e8f0', boxShadow:'0 2px 12px rgba(15,23,42,0.05)', marginBottom:'20px' }}>
+          <p style={{ margin:'0 0 16px', fontSize:'0.9375rem', color:'#334155', lineHeight:1.7 }}>{tl.description}</p>
+          <div style={{ backgroundColor:'#f8fafc', borderRadius:'10px', padding:'14px 16px', borderLeft:`3px solid ${tl.color}` }}>
+            <p style={{ margin:'0 0 4px', fontSize:'0.75rem', fontWeight:700, color:'#64748b', letterSpacing:'0.06em', textTransform:'uppercase' }}>Recommendation</p>
+            <p style={{ margin:0, fontSize:'0.9rem', color:'#1e293b', lineHeight:1.6 }}>{tl.advice}</p>
+          </div>
+        </div>
+        <ContinueButton onClick={onContinue}>Continue to Heart Risk Assessment →</ContinueButton>
+        <p style={{ textAlign:'center', marginTop:'16px', fontSize:'0.78rem', color:'#94a3b8' }}>Next: Cardiovascular Risk Assessment</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Framingham pre-screen (known CVD?) ───────────────────────────────────────
+
+function FraminghamPreScreen({ onBack, onKnownCVD, onNoCVD }) {
+  return (
+    <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
+      <PageHeader subtitle="Cardiovascular Pre-Screening" onBack={onBack} />
+      <div style={{ maxWidth:'560px', margin:'0 auto', padding:'48px 24px' }}>
+        <div style={{ backgroundColor:'#ffffff', borderRadius:'20px', padding:'36px 32px', boxShadow:'0 4px 24px rgba(15,23,42,0.08)', border:'1px solid #e2e8f0' }}>
+          <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'48px', height:'48px', borderRadius:'14px', backgroundColor:'#fee2e2', marginBottom:'20px' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#b91c1c"><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z"/></svg>
+          </div>
+          <h2 style={{ margin:'0 0 10px', fontSize:'1.375rem', fontWeight:800, color:'#0f172a' }}>Heart Disease Check</h2>
+          <p style={{ margin:'0 0 28px', fontSize:'1rem', fontWeight:600, color:'#334155', lineHeight:1.6 }}>Has this patient had a previous heart attack or been diagnosed with heart disease?</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+            <button onClick={onKnownCVD} style={{ width:'100%', padding:'16px 24px', border:'2px solid #e2e8f0', borderRadius:'12px', backgroundColor:'#ffffff', color:'#334155', fontSize:'1rem', fontWeight:600, cursor:'pointer', textAlign:'left', fontFamily:font }}
+              onMouseOver={e => { e.currentTarget.style.borderColor='#b91c1c'; e.currentTarget.style.backgroundColor='#fff1f2'; e.currentTarget.style.color='#b91c1c'; }}
+              onMouseOut={e  => { e.currentTarget.style.borderColor='#e2e8f0'; e.currentTarget.style.backgroundColor='#ffffff'; e.currentTarget.style.color='#334155'; }}>
+              Yes — known heart disease or previous heart attack
+            </button>
+            <button onClick={onNoCVD} style={{ width:'100%', padding:'16px 24px', border:'2px solid #e2e8f0', borderRadius:'12px', backgroundColor:'#ffffff', color:'#334155', fontSize:'1rem', fontWeight:600, cursor:'pointer', textAlign:'left', fontFamily:font }}
+              onMouseOver={e => { e.currentTarget.style.borderColor='#16a34a'; e.currentTarget.style.backgroundColor='#f0fdf4'; e.currentTarget.style.color='#15803d'; }}
+              onMouseOut={e  => { e.currentTarget.style.borderColor='#e2e8f0'; e.currentTarget.style.backgroundColor='#ffffff'; e.currentTarget.style.color='#334155'; }}>
+              No — assess cardiovascular risk
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Known CVD medication review ─────────────────────────────────────────────
+
+function KnownCVDMedsScreen({ onBack, onContinue }) {
+  const [aspirin, setAspirin] = useState(null);
+  const [statin,  setStatin]  = useState(null);
+  const [bpMeds,  setBpMeds]  = useState(null);
+  const [contHov, setContHov] = useState(false);
+
+  const canContinue = aspirin !== null && statin !== null && bpMeds !== null;
+  const gaps = [];
+  if (aspirin === false) gaps.push('Aspirin / antiplatelet therapy not prescribed — discuss with prescribing physician.');
+  if (statin  === false) gaps.push('Statin therapy not prescribed — cardiovascular risk reduction should be discussed with physician.');
+  if (bpMeds  === false) gaps.push('Blood pressure medication not prescribed — blood pressure management review recommended.');
+
+  return (
+    <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
+      <PageHeader subtitle="Known Cardiovascular Disease" onBack={onBack} />
+      <div style={{ maxWidth:'620px', margin:'0 auto', padding:'32px 24px 48px' }}>
+        <div style={{ backgroundColor:'#fee2e2', border:'1px solid #fca5a5', borderRadius:'14px', padding:'18px 22px', marginBottom:'24px', display:'flex', alignItems:'center', gap:'12px' }}>
+          <div style={{ width:'10px', height:'10px', borderRadius:'50%', backgroundColor:'#b91c1c', flexShrink:0 }} />
+          <div>
+            <p style={{ margin:'0 0 2px', fontSize:'1rem', fontWeight:700, color:'#b91c1c' }}>High Cardiovascular Risk</p>
+            <p style={{ margin:0, fontSize:'0.82rem', color:'#b91c1c', opacity:0.8 }}>Known heart disease — physician referral is recommended</p>
+          </div>
+        </div>
+        <div style={{ marginBottom:'24px' }}>
+          <h2 style={{ margin:'0 0 6px', fontSize:'1.375rem', fontWeight:800, color:'#0f172a' }}>Medication Review</h2>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Check which secondary prevention medications this patient is currently taking</p>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:'16px', marginBottom:'24px' }}>
+          <FormCard number={1} label="Currently taking aspirin or antiplatelet medication?" answered={aspirin !== null}>
+            <BinarySelector value={aspirin} onChange={setAspirin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+          <FormCard number={2} label="Currently taking a statin?" hint="e.g. atorvastatin, simvastatin, rosuvastatin" answered={statin !== null}>
+            <BinarySelector value={statin} onChange={setStatin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+          <FormCard number={3} label="Currently taking blood pressure medication?" answered={bpMeds !== null}>
+            <BinarySelector value={bpMeds} onChange={setBpMeds} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+        </div>
+        {canContinue && gaps.length > 0 && (
+          <div style={{ backgroundColor:'#fff7ed', border:'1px solid #fdba74', borderRadius:'14px', padding:'18px 22px', marginBottom:'24px' }}>
+            <p style={{ margin:'0 0 12px', fontSize:'0.875rem', fontWeight:700, color:'#c2410c' }}>Medication Gaps Identified</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+              {gaps.map((g, i) => (
+                <div key={i} style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>
+                  <div style={{ width:'5px', height:'5px', borderRadius:'50%', backgroundColor:'#c2410c', flexShrink:0, marginTop:'7px' }} />
+                  <p style={{ margin:0, fontSize:'0.875rem', color:'#7c2d12', lineHeight:1.6 }}>{g}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <button onClick={canContinue ? () => onContinue({ aspirin, statin, bpMeds }) : undefined}
+          onMouseOver={() => canContinue && setContHov(true)} onMouseOut={() => setContHov(false)} disabled={!canContinue}
+          style={{ width:'100%', padding:'18px 24px', border:'none', borderRadius:'12px', backgroundColor: canContinue ? (contHov ? '#1558a8' : BLUE) : '#e2e8f0', color: canContinue ? '#ffffff' : '#94a3b8', fontSize:'1.0625rem', fontWeight:700, cursor: canContinue ? 'pointer' : 'not-allowed', boxShadow: canContinue ? '0 4px 16px rgba(29,111,206,0.3)' : 'none', fontFamily:font }}>
+          Continue to Summary →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── App router ───────────────────────────────────────────────────────────────
 
 export default function App() {
   const [screen,           setScreen]           = useState('home');
-  const [findriscScore,    setFindriscScore]    = useState(null);
-  const [framinghamResult, setFraminghamResult] = useState(null);
+  const [findriscScore,    setFindriscScore]     = useState(null);
+  const [framinghamResult, setFraminghamResult]  = useState(null);
+  const [knownDiabetic,    setKnownDiabetic]     = useState(false);
+  const [diabetesControl,  setDiabetesControl]   = useState(null);
+  const [knownCVD,         setKnownCVD]          = useState(false);
+  const [cvdMeds,          setCvdMeds]           = useState(null);
+
+  const resetAll = () => {
+    setFindriscScore(null); setFraminghamResult(null);
+    setKnownDiabetic(false); setDiabetesControl(null);
+    setKnownCVD(false); setCvdMeds(null);
+    setScreen('home');
+  };
+
+  const sharedResultsProps = { findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds };
 
   switch (screen) {
+    case 'pre-screen':
+      return (
+        <PreScreen
+          onBack={() => setScreen('home')}
+          onKnownDiabetic={() => { setKnownDiabetic(true); setScreen('diabetes-control'); }}
+          onNotDiabetic={() => { setKnownDiabetic(false); setScreen('findrisc'); }}
+        />
+      );
+
     case 'findrisc':
-      return <FindriscForm onBack={() => setScreen('home')} onResult={s => { setFindriscScore(s); setScreen('findrisc-result'); }} />;
+      return <FindriscForm onBack={() => setScreen('pre-screen')} onResult={s => { setFindriscScore(s); setScreen('findrisc-result'); }} />;
 
     case 'findrisc-result':
-      return <FindriscResult score={findriscScore} onBack={() => setScreen('findrisc')} onContinue={() => setScreen('framingham')} />;
+      return <FindriscResult score={findriscScore} onBack={() => setScreen('findrisc')} onContinue={() => setScreen('framingham-pre')} />;
+
+    case 'diabetes-control':
+      return <DiabetesControlScreen onBack={() => setScreen('pre-screen')} onResult={d => { setDiabetesControl(d); setScreen('diabetes-control-result'); }} />;
+
+    case 'diabetes-control-result':
+      return <DiabetesControlResult diabetesControl={diabetesControl} onBack={() => setScreen('diabetes-control')} onContinue={() => setScreen('framingham-pre')} />;
+
+    case 'framingham-pre':
+      return (
+        <FraminghamPreScreen
+          onBack={() => setScreen(knownDiabetic ? 'diabetes-control-result' : 'findrisc-result')}
+          onKnownCVD={() => { setKnownCVD(true); setScreen('known-cvd-meds'); }}
+          onNoCVD={() => { setKnownCVD(false); setScreen('framingham'); }}
+        />
+      );
+
+    case 'known-cvd-meds':
+      return <KnownCVDMedsScreen onBack={() => setScreen('framingham-pre')} onContinue={m => { setCvdMeds(m); setScreen('results'); }} />;
 
     case 'framingham':
-      return <FraminghamForm findriscScore={findriscScore} onBack={() => setScreen('findrisc-result')} onResult={r => { setFraminghamResult(r); setScreen('framingham-result'); }} />;
+      return <FraminghamForm findriscScore={findriscScore} onBack={() => setScreen('framingham-pre')} onResult={r => { setFraminghamResult(r); setScreen('framingham-result'); }} />;
 
     case 'framingham-result':
       return <FraminghamResult result={framinghamResult} onBack={() => setScreen('framingham')} onContinue={() => setScreen('results')} />;
@@ -1033,9 +1556,8 @@ export default function App() {
     case 'results':
       return (
         <ResultsSummary
-          findriscScore={findriscScore}
-          framinghamResult={framinghamResult}
-          onStartNew={() => { setFindriscScore(null); setFraminghamResult(null); setScreen('home'); }}
+          {...sharedResultsProps}
+          onStartNew={resetAll}
           onGenerateReferral={() => setScreen('referral')}
         />
       );
@@ -1043,13 +1565,12 @@ export default function App() {
     case 'referral':
       return (
         <ReferralLetter
-          findriscScore={findriscScore}
-          framinghamResult={framinghamResult}
+          {...sharedResultsProps}
           onBack={() => setScreen('results')}
         />
       );
 
     default:
-      return <HomeScreen onStart={() => setScreen('findrisc')} />;
+      return <HomeScreen onStart={() => setScreen('pre-screen')} />;
   }
 }
