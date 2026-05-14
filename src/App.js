@@ -674,7 +674,7 @@ function ResultsSummary({ findriscScore, framinghamResult, onStartNew, onGenerat
             <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:cardioInfo.color, borderRadius:'16px 16px 0 0' }} />
             <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Cardiovascular</p>
             <p style={{ margin:0, fontSize:'2.75rem', fontWeight:900, color:cardioInfo.color, lineHeight:1, letterSpacing:'-0.03em' }}>{framinghamRisk}%</p>
-            <p style={{ margin:'3px 0 16px', fontSize:'0.75rem', color:'#94a3b8', fontWeight:500 }}>10-year risk{estimated ? ' · estimated' : ''}</p>
+            <p style={{ margin:'3px 0 16px', fontSize:'0.75rem', color:'#94a3b8', fontWeight:500 }}>10-year risk · {sex === 'male' ? 'Male' : 'Female'}{estimated ? ' · estimated' : ''}</p>
             <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:cardioInfo.bannerBg, borderRadius:'8px', border:`1px solid ${cardioInfo.bannerBorder}` }}>
               <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:cardioInfo.color, flexShrink:0 }} />
               <span style={{ fontSize:'0.72rem', fontWeight:700, color:cardioInfo.color }}>{cardioInfo.level}</span>
