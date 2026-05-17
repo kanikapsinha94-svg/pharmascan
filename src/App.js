@@ -94,50 +94,25 @@ function getCardioRiskInfo(pct) {
   };
 }
 
-function getDiabetesTrafficLight({ lastSeen, lastBloodTest, homeChecks, onMedication, diet, exercise, complications, hba1c }) {
-  const h = hba1c !== null && hba1c !== undefined ? parseFloat(hba1c) : null;
-
-  const redFlags = [
-    lastSeen      === 'over12mo',
-    lastBloodTest === 'over12mo' || lastBloodTest === 'never',
-    complications === true,
-    h !== null && h > 9,
-  ];
-  const amberFlags = [
-    lastSeen      === '3to12mo',
-    lastBloodTest === '3to12mo',
-    homeChecks    === 'never' || homeChecks === 'rarely',
-    onMedication  === false,
-    diet          === 'poor',
-    exercise      === false,
-    h !== null && h >= 7.5,
-  ];
-
-  const urgent = redFlags.some(Boolean);
-  const review = !urgent && amberFlags.some(Boolean);
-
-  const redCount   = redFlags.filter(Boolean).length;
-  const amberCount = amberFlags.filter(Boolean).length;
-
-  const urgentDesc = redCount > 1
-    ? `This patient has ${redCount} urgent concern${redCount > 1 ? 's' : ''} requiring immediate attention.`
-    : complications
-      ? 'This patient has known diabetes complications that require urgent medical review.'
-      : lastSeen === 'over12mo' || lastBloodTest === 'over12mo' || lastBloodTest === 'never'
-        ? 'This patient has not been seen or tested for over 12 months — urgent review is required.'
-        : 'This patient\'s HbA1c is significantly elevated — urgent diabetes review is required.';
-
-  const reviewDesc = amberCount > 1
-    ? `${amberCount} factors suggest this patient's diabetes management needs review.`
-    : !onMedication
-      ? 'This patient is not currently on diabetes medication — a GP review is advisable.'
-      : diet === 'poor'
-        ? 'This patient reports a poor diet, which may be affecting diabetes control.'
-        : 'This patient\'s diabetes management could be improved in one or more areas.';
-
-  if (urgent) return { light:'red',   color:'#b91c1c', bg:'#fee2e2', border:'#fca5a5', title:'Urgent Review Needed',  description: urgentDesc, advice:'Refer urgently to the patient\'s GP or diabetes care team. Do not delay.' };
-  if (review) return { light:'amber', color:'#c2410c', bg:'#ffedd5', border:'#fdba74', title:'Review Recommended',    description: reviewDesc, advice:'Recommend the patient books a diabetes review appointment with their GP or diabetes nurse soon.' };
-  return           { light:'green', color:'#15803d', bg:'#dcfce7', border:'#86efac', title:'Well Controlled',         description:'This patient\'s diabetes appears well managed across all areas assessed.', advice:'Encourage continued adherence to medication, diet, and exercise. Annual GP review recommended.' };
+function getDiabetesCareGaps({ hba1cKnown, hba1cPct, lastSeen, medication, complications }) {
+  const gaps = [];
+  if (hba1cKnown && hba1cPct !== null) {
+    if (hba1cPct > 9)
+      gaps.push({ title: 'HbA1c significantly above target (>75 mmol/mol / >9%)', recommendation: 'Urgent referral to GP or diabetes team. Medication review and intensification is likely required.' });
+    else if (hba1cPct >= 7)
+      gaps.push({ title: 'HbA1c above target (53–75 mmol/mol / 7–9%)', recommendation: 'Diabetes review with GP or diabetes nurse recommended to optimise blood glucose control.' });
+  } else if (!hba1cKnown) {
+    gaps.push({ title: 'HbA1c result unknown to patient', recommendation: 'Encourage the patient to have a blood test and ask their care team for their result. Regular HbA1c monitoring is essential.' });
+  }
+  if (lastSeen === 'over12mo')
+    gaps.push({ title: 'No diabetes review in over 12 months', recommendation: 'This patient is significantly overdue for a diabetes review. Urgent GP appointment recommended.' });
+  else if (lastSeen === '6to12mo')
+    gaps.push({ title: 'Diabetes review overdue (6–12 months since last appointment)', recommendation: 'Patient should book a diabetes review with their GP or diabetes nurse soon.' });
+  if (medication === 'none')
+    gaps.push({ title: 'Not currently on diabetes medication', recommendation: 'A GP review can confirm whether medication is appropriate. Diet-controlled diabetes still requires regular monitoring.' });
+  if (complications)
+    gaps.push({ title: 'Known diabetes complications present', recommendation: 'Ensure the patient is under appropriate specialist care. Regular monitoring of affected organ systems is important.' });
+  return gaps;
 }
 
 // ─── Framingham calculation (D'Agostino 2008) ────────────────────────────────
@@ -727,7 +702,7 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
 
   // Diabetes info
   const findriscInfo = !knownDiabetic && findriscScore !== null ? getRiskInfo(findriscScore) : null;
-  const tl           = knownDiabetic && diabetesControl ? getDiabetesTrafficLight(diabetesControl) : null;
+  const careGaps     = knownDiabetic && diabetesControl ? getDiabetesCareGaps(diabetesControl) : null;
 
   // CVD info
   const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk : null;
@@ -736,19 +711,19 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
   const cardioInfo     = framinghamRisk !== null ? getCardioRiskInfo(framinghamRisk) : { level:'High Risk', color:'#b91c1c', bannerBg:'#fee2e2', bannerBorder:'#fca5a5', bg:'#fee2e2', border:'#fca5a5' };
 
   // Referral logic
-  const diabetesReferral = knownDiabetic ? (tl && tl.light !== 'green') : (findriscScore !== null && findriscScore >= 15);
+  const diabetesReferral = knownDiabetic ? (careGaps && careGaps.length > 0) : (findriscScore !== null && findriscScore >= 15);
   const cvdReferral      = knownCVD || (framinghamRisk !== null && framinghamRisk >= 10);
   const referralNeeded   = diabetesReferral || cvdReferral;
 
   const referralReasons = [];
-  if (knownDiabetic && tl && tl.light !== 'green')
-    referralReasons.push(`Diabetes control assessment: ${tl.title} — ${tl.advice}`);
+  if (knownDiabetic && careGaps && careGaps.length > 0)
+    referralReasons.push(`${careGaps.length} diabetes care gap${careGaps.length > 1 ? 's' : ''} identified — see Care Gap Summary for details and recommendations.`);
   else if (!knownDiabetic && findriscScore !== null && findriscScore >= 15)
     referralReasons.push(`FINDRISC score of ${findriscScore}/26 (${findriscInfo.level}) — refer for fasting blood glucose or HbA1c testing and consideration of a diabetes prevention programme.`);
   if (knownCVD)
     referralReasons.push('Known cardiovascular disease — urgent review of secondary prevention medications and cardiovascular management by a physician is recommended.');
   else if (framinghamRisk !== null && framinghamRisk >= 20)
-    referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (High Risk) — refer for full lipid profile and cardiovascular risk management, including consideration of statin therapy.`);
+    referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (High Risk) — refer for full lipid profile and cardiovascular risk management.`);
   else if (framinghamRisk !== null && framinghamRisk >= 10)
     referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (Intermediate Risk) — refer for full lipid profile review and cardiovascular risk factor management.`);
 
@@ -780,14 +755,15 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'20px' }}>
 
           {/* Diabetes card */}
-          {knownDiabetic && tl ? (
-            <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${tl.border}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
-              <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:tl.color, borderRadius:'16px 16px 0 0' }} />
-              <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Diabetes Control</p>
-              <p style={{ margin:'0 0 16px', fontSize:'1.0625rem', fontWeight:800, color:tl.color, lineHeight:1.3 }}>{tl.title}</p>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:tl.bg, borderRadius:'8px', border:`1px solid ${tl.border}` }}>
-                <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:tl.color, flexShrink:0 }} />
-                <span style={{ fontSize:'0.72rem', fontWeight:700, color:tl.color }}>Known Diabetic</span>
+          {knownDiabetic && careGaps !== null ? (
+            <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${careGaps.length > 0 ? '#fdba74' : '#86efac'}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
+              <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor: careGaps.length > 0 ? '#c2410c' : '#15803d', borderRadius:'16px 16px 0 0' }} />
+              <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Diabetes</p>
+              <p style={{ margin:'0 0 4px', fontSize:'2rem', fontWeight:900, color: careGaps.length > 0 ? '#c2410c' : '#15803d', lineHeight:1 }}>{careGaps.length}</p>
+              <p style={{ margin:'0 0 12px', fontSize:'0.75rem', color:'#94a3b8', fontWeight:500 }}>care gap{careGaps.length !== 1 ? 's' : ''} identified</p>
+              <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor: careGaps.length > 0 ? '#fff7ed' : '#f0fdf4', borderRadius:'8px', border:`1px solid ${careGaps.length > 0 ? '#fdba74' : '#86efac'}` }}>
+                <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor: careGaps.length > 0 ? '#c2410c' : '#15803d', flexShrink:0 }} />
+                <span style={{ fontSize:'0.72rem', fontWeight:700, color: careGaps.length > 0 ? '#c2410c' : '#15803d' }}>Known Diabetic</span>
               </div>
             </div>
           ) : (
@@ -898,13 +874,15 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
 
 // ─── Referral letter ─────────────────────────────────────────────────────────
 
-function getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds }) {
+function getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview }) {
   const recs = [];
   if (knownDiabetic && diabetesControl) {
-    const tl = getDiabetesTrafficLight(diabetesControl);
-    if (tl.light === 'red')   recs.push('Urgent diabetes review — the patient has not seen a doctor for diabetes care in over 12 months, has known complications, and/or has an HbA1c above 9%. Immediate GP or diabetes team referral is required.');
-    else if (tl.light === 'amber') recs.push('Diabetes review recommended — the patient\'s last diabetes appointment was 3–12 months ago and/or HbA1c is borderline elevated. A prompt review appointment with the GP or diabetes nurse is advised.');
-    else recs.push('Diabetes appears well controlled. Continued adherence to management plan and annual GP review recommended.');
+    const gaps = getDiabetesCareGaps(diabetesControl);
+    if (gaps.length === 0) {
+      recs.push('Diabetes appears well managed. Continued adherence to management plan and annual GP review recommended.');
+    } else {
+      gaps.forEach(g => recs.push(g.recommendation));
+    }
   } else if (!knownDiabetic && findriscScore !== null && findriscScore >= 15) {
     recs.push('Fasting plasma glucose and/or HbA1c measurement to screen for type 2 diabetes or pre-diabetes.');
     recs.push('Referral for a structured diabetes prevention programme or intensive lifestyle intervention.');
@@ -920,24 +898,29 @@ function getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic
     if (framinghamRisk >= 20) {
       recs.push('Urgent fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides).');
       recs.push('12-lead ECG and further cardiovascular investigation as clinically indicated.');
-      recs.push('Consideration of statin therapy and/or optimisation of antihypertensive medication as clinically appropriate.');
+      if (!medicationReview || !medicationReview.onStatin)
+        recs.push('Consideration of statin therapy as clinically appropriate — patient is not currently taking a statin.');
       recs.push('Reinforcement of cardiovascular risk-reducing lifestyle modifications.');
     } else if (framinghamRisk >= 10) {
       recs.push('Fasting lipid profile to obtain precise cardiovascular risk data and guide management.');
       recs.push('Review of blood pressure control and treatment optimisation if indicated.');
+      if (!medicationReview || !medicationReview.onStatin)
+        recs.push('Discussion of statin therapy for cardiovascular risk reduction — patient is not currently taking a statin.');
+      if (!medicationReview || !medicationReview.onAspirin)
+        recs.push('Assessment of whether aspirin or antiplatelet therapy is appropriate — patient is not currently taking one.');
       recs.push('Lifestyle counselling focused on diet, physical activity, and smoking cessation where applicable.');
     }
   }
   return recs;
 }
 
-function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, onBack }) {
+function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview, onBack }) {
   const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk     : null;
   const estimated      = !knownCVD && framinghamResult ? framinghamResult.estimated : false;
   const findriscInfo   = !knownDiabetic && findriscScore !== null ? getRiskInfo(findriscScore) : null;
   const cardioInfo     = framinghamRisk !== null ? getCardioRiskInfo(framinghamRisk) : null;
-  const tl             = knownDiabetic && diabetesControl ? getDiabetesTrafficLight(diabetesControl) : null;
-  const recs           = getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds });
+  const careGaps       = knownDiabetic && diabetesControl ? getDiabetesCareGaps(diabetesControl) : null;
+  const recs           = getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview });
 
   const [pharmacyName,    setPharmacyName]    = useState('');
   const [pharmacistName,  setPharmacistName]  = useState('');
@@ -1068,15 +1051,22 @@ function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabet
 
             {/* Diabetes section */}
             <div style={{ marginBottom: '24px' }}>
-              {knownDiabetic && tl ? (
+              {knownDiabetic && careGaps !== null ? (
                 <>
-                  <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: tl.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                    Diabetes Control Assessment — {tl.title}
+                  <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Diabetes — Care Gap Assessment
                   </p>
-                  <div style={{ borderLeft: `3px solid ${tl.color}`, paddingLeft: '16px' }}>
-                    <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
-                      This patient has a confirmed diagnosis of diabetes. A diabetes control assessment conducted using PharmaScan indicates: <strong>{tl.title}</strong>. {tl.description}
+                  <div style={{ borderLeft: '3px solid #475569', paddingLeft: '16px' }}>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
+                      This patient has a confirmed diagnosis of diabetes. A care gap assessment was conducted covering HbA1c status, last clinical review, current medication, and known complications.
+                      {diabetesControl.hba1cDisplay && <> The patient's most recent HbA1c was recorded as <strong>{diabetesControl.hba1cDisplay}</strong>.</>}
+                      {careGaps.length === 0 && ' No care gaps were identified.'}
                     </p>
+                    {careGaps.length > 0 && (
+                      <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
+                        <strong>{careGaps.length} care gap{careGaps.length > 1 ? 's' : ''} identified:</strong> {careGaps.map(g => g.title).join('; ')}.
+                      </p>
+                    )}
                   </div>
                 </>
               ) : findriscInfo && findriscScore !== null && (
@@ -1115,6 +1105,11 @@ function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabet
                     <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
                       Using the Framingham Risk Score (D'Agostino <em>et al.</em>, 2008), this patient's estimated 10-year risk of a major cardiovascular event is <strong>{framinghamRisk}%</strong>, placing them in the <strong>{cardioInfo.level}</strong> category.{estimated && <> <em>Note: cholesterol values were unavailable at the time of screening; population average values were applied in this calculation.</em></>}
                     </p>
+                    {estimated && medicationReview && medicationReview.onStatin && (
+                      <p style={{ margin: '12px 0 0', fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8, fontStyle: 'italic' }}>
+                        Note: The Framingham score was calculated using population average cholesterol values as individual results were unavailable. The patient is currently on statin therapy — actual cardiovascular risk may be lower than estimated.
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -1215,26 +1210,29 @@ function PreScreen({ onBack, onKnownDiabetic, onNotDiabetic }) {
   );
 }
 
-// ─── Diabetes control screen ──────────────────────────────────────────────────
+// ─── Diabetes care gap identifier ────────────────────────────────────────────
 
 function DiabetesControlScreen({ onBack, onResult }) {
+  const [hba1cKnown,    setHba1cKnown]    = useState(null);
+  const [hba1cRaw,      setHba1cRaw]      = useState('');
+  const [hba1cUnit,     setHba1cUnit]     = useState('pct');
   const [lastSeen,      setLastSeen]      = useState(null);
-  const [lastBloodTest, setLastBloodTest] = useState(null);
-  const [hba1c,         setHba1c]         = useState('');
-  const [homeChecks,    setHomeChecks]    = useState(null);
-  const [onMedication,  setOnMedication]  = useState(null);
-  const [medType,       setMedType]       = useState(null);
-  const [diet,          setDiet]          = useState(null);
-  const [exercise,      setExercise]      = useState(null);
+  const [medication,    setMedication]    = useState(null);
   const [complications, setComplications] = useState(null);
   const [calcHov,       setCalcHov]       = useState(false);
 
-  const hba1cN   = hba1c ? parseFloat(hba1c) : null;
-  const hba1cErr = hba1c && (hba1cN < 4 || hba1cN > 20) ? 'Enter a value between 4 and 20%' : null;
+  const hba1cN   = hba1cRaw ? parseFloat(hba1cRaw) : null;
+  const hba1cPct = hba1cN !== null ? (hba1cUnit === 'mmol' ? hba1cN / 10.929 : hba1cN) : null;
+  const hba1cErr = hba1cRaw && hba1cN !== null
+    ? ((hba1cUnit === 'mmol' ? (hba1cN < 20 || hba1cN > 220) : (hba1cN < 4 || hba1cN > 20))
+      ? (hba1cUnit === 'mmol' ? 'Enter a value between 20 and 220 mmol/mol' : 'Enter a value between 4 and 20%')
+      : null)
+    : null;
 
-  const required     = [lastSeen, lastBloodTest, homeChecks, onMedication, diet, exercise, complications];
-  const answeredCount = required.filter(v => v !== null).length;
-  const canContinue  = answeredCount === 7 && !hba1cErr;
+  const hba1cAnswered = hba1cKnown === false || (hba1cKnown === true && hba1cRaw !== '' && !hba1cErr);
+  const hba1cDisplay  = hba1cKnown && hba1cRaw ? `${hba1cRaw} ${hba1cUnit === 'mmol' ? 'mmol/mol' : '%'}` : null;
+  const answeredCount = [hba1cAnswered, lastSeen !== null, medication !== null, complications !== null].filter(Boolean).length;
+  const canContinue   = answeredCount === 4;
 
   const mkRadio = (opts, val, setter) => (
     <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
@@ -1249,100 +1247,81 @@ function DiabetesControlScreen({ onBack, onResult }) {
 
   return (
     <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
-      <PageHeader subtitle="Diabetes Control Assessment" onBack={onBack} />
-      <ProgressBar pct={Math.round(answeredCount / 7 * 100)} />
+      <PageHeader subtitle="Care Gap Identifier" onBack={onBack} />
+      <ProgressBar pct={Math.round(answeredCount / 4 * 100)} />
       <div style={{ maxWidth:'680px', margin:'0 auto', padding:'32px 24px 48px' }}>
         <div style={{ marginBottom:'28px' }}>
-          <h2 style={{ margin:'0 0 6px', fontSize:'1.5rem', fontWeight:800, color:'#0f172a' }}>Diabetes Control Check</h2>
-          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Questions about this patient's diabetes management — {answeredCount} of 7 answered</p>
+          <h2 style={{ margin:'0 0 6px', fontSize:'1.5rem', fontWeight:800, color:'#0f172a' }}>Diabetes Care Gap Identifier</h2>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Four quick questions — {answeredCount} of 4 answered</p>
         </div>
 
         <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
 
-          {/* Q1 — Last doctor visit */}
-          <FormCard number={1} label="When did this patient last see a doctor for their diabetes?" answered={lastSeen !== null}>
+          {/* Q1 — HbA1c */}
+          <FormCard number={1} label="Does this patient know their most recent HbA1c result?" answered={hba1cAnswered}>
+            <BinarySelector value={hba1cKnown} onChange={v => { setHba1cKnown(v); if (!v) setHba1cRaw(''); }} options={[{ value:true, label:'Yes' }, { value:false, label:'No / not sure' }]} />
+            {hba1cKnown === true && (
+              <div style={{ marginTop:'14px', padding:'16px', backgroundColor:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0' }}>
+                <div style={{ display:'flex', gap:'8px', marginBottom:'12px' }}>
+                  {[{ v:'pct', label:'% (NGSP)' }, { v:'mmol', label:'mmol/mol (IFCC)' }].map(u => (
+                    <button key={u.v} onClick={() => { setHba1cUnit(u.v); setHba1cRaw(''); }}
+                      style={{ padding:'6px 14px', border:`2px solid ${hba1cUnit === u.v ? BLUE : '#e2e8f0'}`, borderRadius:'8px', backgroundColor: hba1cUnit === u.v ? '#eff6ff' : '#fff', color: hba1cUnit === u.v ? BLUE : '#64748b', fontWeight: hba1cUnit === u.v ? 700 : 400, fontSize:'0.82rem', cursor:'pointer', fontFamily:font }}>
+                      {u.label}
+                    </button>
+                  ))}
+                </div>
+                <StyledNumberInput value={hba1cRaw} onChange={setHba1cRaw}
+                  placeholder={hba1cUnit === 'pct' ? 'e.g. 7.2' : 'e.g. 55'}
+                  unit={hba1cUnit === 'pct' ? '%' : 'mmol/mol'}
+                  min={hba1cUnit === 'pct' ? 4 : 20} max={hba1cUnit === 'pct' ? 20 : 220} />
+                <FieldError msg={hba1cErr} />
+                {hba1cPct !== null && !hba1cErr && (
+                  <p style={{ margin:'8px 0 0', fontSize:'0.78rem', fontWeight:600, color: hba1cPct > 9 ? '#b91c1c' : hba1cPct >= 7 ? '#c2410c' : '#15803d' }}>
+                    {hba1cPct > 9 ? 'Significantly above target — urgent review needed' : hba1cPct >= 7 ? 'Above target — review recommended' : 'Within target range — well controlled'}
+                  </p>
+                )}
+              </div>
+            )}
+            {hba1cKnown === false && (
+              <p style={{ margin:'10px 0 0', fontSize:'0.78rem', color:'#94a3b8', lineHeight:1.5 }}>This will be noted as a care gap — knowing HbA1c is important for monitoring diabetes control.</p>
+            )}
+          </FormCard>
+
+          {/* Q2 — Last seen */}
+          <FormCard number={2} label="When did this patient last see a doctor or diabetes nurse?" answered={lastSeen !== null}>
             {mkRadio([
-              { value:'within3mo', label:'Within the last 3 months' },
-              { value:'3to12mo',   label:'3–12 months ago' },
-              { value:'over12mo',  label:'More than 12 months ago' },
+              { value:'under6mo', label:'Within the last 6 months' },
+              { value:'6to12mo',  label:'6–12 months ago' },
+              { value:'over12mo', label:'More than 12 months ago' },
             ], lastSeen, setLastSeen)}
           </FormCard>
 
-          {/* Q2 — Last blood test + optional HbA1c */}
-          <FormCard number={2} label="When did this patient last have a blood test for their diabetes?" answered={lastBloodTest !== null}>
+          {/* Q3 — Medication */}
+          <FormCard number={3} label="Is this patient currently on diabetes medication?" answered={medication !== null}>
             {mkRadio([
-              { value:'within3mo', label:'Within the last 3 months' },
-              { value:'3to12mo',   label:'3–12 months ago' },
-              { value:'over12mo',  label:'More than 12 months ago' },
-              { value:'never',     label:'Never / not sure' },
-            ], lastBloodTest, setLastBloodTest)}
-            {lastBloodTest && lastBloodTest !== 'never' && (
-              <div style={{ marginTop:'14px', padding:'14px 16px', backgroundColor:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0' }}>
-                <p style={{ margin:'0 0 4px', fontSize:'0.72rem', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>HbA1c result (optional)</p>
-                <p style={{ margin:'0 0 12px', fontSize:'0.78rem', color:'#94a3b8', lineHeight:1.5 }}>Enter the most recent HbA1c if available for a more precise assessment.</p>
-                <StyledNumberInput value={hba1c} onChange={setHba1c} placeholder="e.g. 7.2" unit="%" min={4} max={20} />
-                <FieldError msg={hba1cErr} />
-              </div>
+              { value:'tablets', label:'Yes — tablets (e.g. metformin, glipizide)' },
+              { value:'insulin', label:'Yes — insulin' },
+              { value:'both',    label:'Yes — both tablets and insulin' },
+              { value:'none',    label:'No — not currently on medication' },
+            ], medication, setMedication)}
+            {medication === 'none' && (
+              <p style={{ margin:'10px 0 0', fontSize:'0.78rem', color:'#94a3b8', lineHeight:1.5 }}>Diet-controlled diabetes may be appropriate. This will be flagged for GP review.</p>
             )}
           </FormCard>
 
-          {/* Q3 — Home blood sugar checks */}
-          <FormCard number={3} label="How often does this patient check their blood sugar at home?" answered={homeChecks !== null}>
-            {mkRadio([
-              { value:'daily',   label:'Daily' },
-              { value:'weekly',  label:'A few times a week' },
-              { value:'monthly', label:'Occasionally (monthly or less)' },
-              { value:'rarely',  label:'Rarely' },
-              { value:'never',   label:'Never' },
-            ], homeChecks, setHomeChecks)}
-          </FormCard>
-
-          {/* Q4 — Medication */}
-          <FormCard number={4} label="Is this patient currently on diabetes medication?" answered={onMedication !== null}>
-            <BinarySelector value={onMedication} onChange={v => { setOnMedication(v); if (!v) setMedType(null); }} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
-            {onMedication === true && (
-              <div style={{ marginTop:'14px' }}>
-                <p style={{ margin:'0 0 8px', fontSize:'0.82rem', color:'#64748b', fontWeight:500 }}>What type? (optional)</p>
-                {mkRadio([
-                  { value:'metformin', label:'Tablets only (e.g. metformin, glipizide)' },
-                  { value:'insulin',   label:'Insulin only' },
-                  { value:'both',      label:'Both tablets and insulin' },
-                  { value:'other',     label:'Other medication' },
-                ], medType, setMedType)}
-              </div>
-            )}
-            {onMedication === false && (
-              <p style={{ margin:'10px 0 0', fontSize:'0.78rem', color:'#94a3b8', lineHeight:1.5 }}>Diet-controlled or recently diagnosed. A medication review with the GP may be appropriate.</p>
-            )}
-          </FormCard>
-
-          {/* Q5 — Diet */}
-          <FormCard number={5} label="How would you describe this patient's diet?" answered={diet !== null}>
-            {mkRadio([
-              { value:'good', label:'Good — mostly healthy, low sugar and fat' },
-              { value:'fair', label:'Fair — mixed, with some unhealthy choices' },
-              { value:'poor', label:'Poor — frequent sugary or high-fat foods' },
-            ], diet, setDiet)}
-          </FormCard>
-
-          {/* Q6 — Exercise */}
-          <FormCard number={6} label="Does this patient exercise at least 3 times a week?" hint="Any activity — walking, swimming, cycling, or gym" answered={exercise !== null}>
-            <BinarySelector value={exercise} onChange={setExercise} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
-          </FormCard>
-
-          {/* Q7 — Complications */}
-          <FormCard number={7} label="Does this patient have any known diabetes complications?" hint="e.g. eye, kidney, nerve, or foot problems" answered={complications !== null}>
+          {/* Q4 — Complications */}
+          <FormCard number={4} label="Any known diabetes complications?" hint="e.g. eye, kidney, nerve, or foot problems" answered={complications !== null}>
             <BinarySelector value={complications} onChange={setComplications} options={[{ value:false, label:'No' }, { value:true, label:'Yes' }]} />
           </FormCard>
 
         </div>
 
         <div style={{ marginTop:'32px' }}>
-          {!canContinue && <p style={{ textAlign:'center', fontSize:'0.82rem', color:'#94a3b8', marginBottom:'12px' }}>Answer all 7 questions to continue</p>}
-          <button onClick={canContinue ? () => onResult({ lastSeen, lastBloodTest, homeChecks, onMedication, medType, diet, exercise, complications, hba1c: hba1cN }) : undefined}
+          {!canContinue && <p style={{ textAlign:'center', fontSize:'0.82rem', color:'#94a3b8', marginBottom:'12px' }}>Answer all 4 questions to continue</p>}
+          <button onClick={canContinue ? () => onResult({ hba1cKnown, hba1cPct, hba1cDisplay, lastSeen, medication, complications }) : undefined}
             onMouseOver={() => canContinue && setCalcHov(true)} onMouseOut={() => setCalcHov(false)} disabled={!canContinue}
             style={{ width:'100%', padding:'18px 24px', border:'none', borderRadius:'12px', backgroundColor: canContinue ? (calcHov ? '#15803d' : '#16a34a') : '#e2e8f0', color: canContinue ? '#ffffff' : '#94a3b8', fontSize:'1.0625rem', fontWeight:700, cursor: canContinue ? 'pointer' : 'not-allowed', boxShadow: canContinue ? '0 4px 16px rgba(22,163,74,0.35)' : 'none', fontFamily:font }}>
-            View Assessment →
+            View Care Gap Summary →
           </button>
         </div>
       </div>
@@ -1350,38 +1329,56 @@ function DiabetesControlScreen({ onBack, onResult }) {
   );
 }
 
-// ─── Diabetes control result ──────────────────────────────────────────────────
+// ─── Diabetes care gap summary ────────────────────────────────────────────────
 
 function DiabetesControlResult({ diabetesControl, onBack, onContinue }) {
-  const tl = getDiabetesTrafficLight(diabetesControl);
-  const lights = [
-    { c:'#ef4444', active: tl.light === 'red'   },
-    { c:'#f59e0b', active: tl.light === 'amber' },
-    { c:'#22c55e', active: tl.light === 'green' },
-  ];
+  const gaps = getDiabetesCareGaps(diabetesControl);
   return (
     <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
-      <PageHeader subtitle="Diabetes Control Assessment" onBack={onBack} />
-      <div style={{ maxWidth:'560px', margin:'0 auto', padding:'40px 24px 64px' }}>
-        <div style={{ textAlign:'center', marginBottom:'32px' }}>
-          <p style={{ margin:'0 0 20px', fontSize:'0.8rem', fontWeight:600, letterSpacing:'0.08em', color:'#94a3b8', textTransform:'uppercase' }}>Diabetes Control</p>
-          <div style={{ display:'inline-flex', flexDirection:'column', alignItems:'center', gap:'10px', padding:'24px 28px', backgroundColor:'#ffffff', borderRadius:'20px', border:`2px solid ${tl.border}`, boxShadow:`0 8px 32px ${tl.border}80` }}>
-            {lights.map((l, i) => (
-              <div key={i} style={{ width: l.active ? '40px' : '24px', height: l.active ? '40px' : '24px', borderRadius:'50%', backgroundColor: l.active ? l.c : '#e2e8f0', transition:'all 200ms ease', boxShadow: l.active ? `0 0 16px ${l.c}80` : 'none' }} />
+      <PageHeader subtitle="Care Gap Identifier" onBack={onBack} />
+      <div style={{ maxWidth:'620px', margin:'0 auto', padding:'40px 24px 64px' }}>
+        <div style={{ marginBottom:'28px' }}>
+          <h2 style={{ margin:'0 0 6px', fontSize:'1.5rem', fontWeight:800, color:'#0f172a' }}>Care Gap Summary</h2>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>
+            {gaps.length === 0 ? 'No care gaps identified' : `${gaps.length} care gap${gaps.length > 1 ? 's' : ''} identified`}
+          </p>
+        </div>
+
+        {gaps.length === 0 ? (
+          <div style={{ backgroundColor:'#f0fdf4', border:'1px solid #86efac', borderRadius:'16px', padding:'24px', marginBottom:'20px', display:'flex', alignItems:'center', gap:'14px' }}>
+            <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#16a34a', flexShrink:0 }}>
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="white"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+            </div>
+            <div>
+              <p style={{ margin:'0 0 2px', fontSize:'1rem', fontWeight:700, color:'#15803d' }}>No care gaps identified</p>
+              <p style={{ margin:0, fontSize:'0.875rem', color:'#166534', lineHeight:1.5 }}>This patient's diabetes management appears to be on track. Encourage continued adherence and annual GP review.</p>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginBottom:'20px' }}>
+            {gaps.map((gap, i) => (
+              <div key={i} style={{ backgroundColor:'#ffffff', borderRadius:'14px', padding:'18px 20px', border:'1px solid #e2e8f0', boxShadow:'0 2px 8px rgba(15,23,42,0.04)' }}>
+                <div style={{ display:'flex', gap:'10px', alignItems:'flex-start', marginBottom:'10px' }}>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="#c2410c" style={{ flexShrink:0, marginTop:'2px' }}>
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
+                  </svg>
+                  <p style={{ margin:0, fontSize:'0.9375rem', fontWeight:700, color:'#0f172a' }}>{gap.title}</p>
+                </div>
+                <div style={{ paddingLeft:'26px' }}>
+                  <p style={{ margin:'0 0 4px', fontSize:'0.72rem', fontWeight:700, color:'#64748b', letterSpacing:'0.06em', textTransform:'uppercase' }}>Recommendation</p>
+                  <p style={{ margin:0, fontSize:'0.875rem', color:'#334155', lineHeight:1.65 }}>{gap.recommendation}</p>
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-        <div style={{ backgroundColor:tl.bg, border:`1px solid ${tl.border}`, borderRadius:'14px', padding:'18px 22px', marginBottom:'20px', display:'flex', alignItems:'center', gap:'12px' }}>
-          <div style={{ width:'10px', height:'10px', borderRadius:'50%', backgroundColor:tl.color, flexShrink:0 }} />
-          <p style={{ margin:0, fontSize:'1.0625rem', fontWeight:700, color:tl.color }}>{tl.title}</p>
-        </div>
-        <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'24px', border:'1px solid #e2e8f0', boxShadow:'0 2px 12px rgba(15,23,42,0.05)', marginBottom:'20px' }}>
-          <p style={{ margin:'0 0 16px', fontSize:'0.9375rem', color:'#334155', lineHeight:1.7 }}>{tl.description}</p>
-          <div style={{ backgroundColor:'#f8fafc', borderRadius:'10px', padding:'14px 16px', borderLeft:`3px solid ${tl.color}` }}>
-            <p style={{ margin:'0 0 4px', fontSize:'0.75rem', fontWeight:700, color:'#64748b', letterSpacing:'0.06em', textTransform:'uppercase' }}>Recommendation</p>
-            <p style={{ margin:0, fontSize:'0.9rem', color:'#1e293b', lineHeight:1.6 }}>{tl.advice}</p>
+        )}
+
+        {diabetesControl.hba1cDisplay && (
+          <div style={{ backgroundColor:'#f8fafc', borderRadius:'10px', padding:'12px 16px', border:'1px solid #e2e8f0', marginBottom:'20px' }}>
+            <p style={{ margin:0, fontSize:'0.82rem', color:'#64748b' }}>HbA1c recorded: <strong style={{ color:'#0f172a' }}>{diabetesControl.hba1cDisplay}</strong></p>
           </div>
-        </div>
+        )}
+
         <ContinueButton onClick={onContinue}>Continue to Heart Risk Assessment →</ContinueButton>
         <p style={{ textAlign:'center', marginTop:'16px', fontSize:'0.78rem', color:'#94a3b8' }}>Next: Cardiovascular Risk Assessment</p>
       </div>
@@ -1483,25 +1480,73 @@ function KnownCVDMedsScreen({ onBack, onContinue }) {
   );
 }
 
+// ─── Medication review (post-Framingham, risk ≥ 10%) ─────────────────────────
+
+function MedicationReviewScreen({ framinghamRisk, onBack, onContinue }) {
+  const [onStatin,  setOnStatin]  = useState(null);
+  const [onAspirin, setOnAspirin] = useState(null);
+  const [contHov,   setContHov]   = useState(false);
+
+  const canContinue = onStatin !== null && onAspirin !== null;
+
+  return (
+    <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
+      <PageHeader subtitle="Medication Review" onBack={onBack} />
+      <div style={{ maxWidth:'620px', margin:'0 auto', padding:'32px 24px 48px' }}>
+
+        <div style={{ backgroundColor:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:'14px', padding:'16px 20px', marginBottom:'24px', display:'flex', alignItems:'center', gap:'12px' }}>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill={BLUE} style={{ flexShrink:0 }}><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"/></svg>
+          <p style={{ margin:0, fontSize:'0.875rem', color:BLUE, lineHeight:1.5 }}>
+            10-year cardiovascular risk of <strong>{framinghamRisk}%</strong> — checking current medications before generating the referral helps personalise the recommendations.
+          </p>
+        </div>
+
+        <div style={{ marginBottom:'24px' }}>
+          <h2 style={{ margin:'0 0 6px', fontSize:'1.375rem', fontWeight:800, color:'#0f172a' }}>Current Medication Check</h2>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Two quick questions — blood pressure medication was already recorded</p>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:'16px', marginBottom:'28px' }}>
+          <FormCard number={1} label="Is this patient currently taking a statin?" hint="e.g. atorvastatin, rosuvastatin, simvastatin" answered={onStatin !== null}>
+            <BinarySelector value={onStatin} onChange={setOnStatin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+          <FormCard number={2} label="Is this patient currently taking aspirin or a blood thinner?" hint="e.g. aspirin, clopidogrel, warfarin, rivaroxaban" answered={onAspirin !== null}>
+            <BinarySelector value={onAspirin} onChange={setOnAspirin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+        </div>
+
+        {!canContinue && <p style={{ textAlign:'center', fontSize:'0.82rem', color:'#94a3b8', marginBottom:'12px' }}>Answer both questions to continue</p>}
+        <button onClick={canContinue ? () => onContinue({ onStatin, onAspirin }) : undefined}
+          onMouseOver={() => canContinue && setContHov(true)} onMouseOut={() => setContHov(false)} disabled={!canContinue}
+          style={{ width:'100%', padding:'18px 24px', border:'none', borderRadius:'12px', backgroundColor: canContinue ? (contHov ? '#1558a8' : BLUE) : '#e2e8f0', color: canContinue ? '#ffffff' : '#94a3b8', fontSize:'1.0625rem', fontWeight:700, cursor: canContinue ? 'pointer' : 'not-allowed', boxShadow: canContinue ? '0 4px 16px rgba(29,111,206,0.3)' : 'none', fontFamily:font }}>
+          Continue to Summary →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── App router ───────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen,           setScreen]           = useState('home');
-  const [findriscScore,    setFindriscScore]     = useState(null);
-  const [framinghamResult, setFraminghamResult]  = useState(null);
-  const [knownDiabetic,    setKnownDiabetic]     = useState(false);
-  const [diabetesControl,  setDiabetesControl]   = useState(null);
-  const [knownCVD,         setKnownCVD]          = useState(false);
-  const [cvdMeds,          setCvdMeds]           = useState(null);
+  const [screen,            setScreen]            = useState('home');
+  const [findriscScore,     setFindriscScore]      = useState(null);
+  const [framinghamResult,  setFraminghamResult]   = useState(null);
+  const [knownDiabetic,     setKnownDiabetic]      = useState(false);
+  const [diabetesControl,   setDiabetesControl]    = useState(null);
+  const [knownCVD,          setKnownCVD]           = useState(false);
+  const [cvdMeds,           setCvdMeds]            = useState(null);
+  const [medicationReview,  setMedicationReview]   = useState(null);
 
   const resetAll = () => {
     setFindriscScore(null); setFraminghamResult(null);
     setKnownDiabetic(false); setDiabetesControl(null);
     setKnownCVD(false); setCvdMeds(null);
+    setMedicationReview(null);
     setScreen('home');
   };
 
-  const sharedResultsProps = { findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds };
+  const sharedResultsProps = { findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview };
 
   switch (screen) {
     case 'pre-screen':
@@ -1541,7 +1586,10 @@ export default function App() {
       return <FraminghamForm findriscScore={findriscScore} onBack={() => setScreen('framingham-pre')} onResult={r => { setFraminghamResult(r); setScreen('framingham-result'); }} />;
 
     case 'framingham-result':
-      return <FraminghamResult result={framinghamResult} onBack={() => setScreen('framingham')} onContinue={() => setScreen('results')} />;
+      return <FraminghamResult result={framinghamResult} onBack={() => setScreen('framingham')} onContinue={() => setScreen(framinghamResult.risk >= 10 ? 'medication-review' : 'results')} />;
+
+    case 'medication-review':
+      return <MedicationReviewScreen framinghamRisk={framinghamResult.risk} onBack={() => setScreen('framingham-result')} onContinue={m => { setMedicationReview(m); setScreen('results'); }} />;
 
     case 'results':
       return (
