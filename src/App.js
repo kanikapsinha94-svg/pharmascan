@@ -24,9 +24,9 @@ const FINDRISC_QUESTIONS = [
   {
     id: 'waist', question: 'Waist circumference', hint: 'Measured at the level of the navel',
     options: [
-      { label: 'Men < 94 cm  /  Women < 80 cm',     score: 0 },
-      { label: 'Men 94–102 cm  /  Women 80–88 cm',  score: 3 },
-      { label: 'Men > 102 cm  /  Women > 88 cm',    score: 4 },
+      { label: 'Men < 94 cm  /  Women < 80 cm',    subLabel: 'approximately 37 inches or less for men, 31 inches or less for women',    score: 0 },
+      { label: 'Men 94–102 cm  /  Women 80–88 cm', subLabel: 'approximately 37–40 inches for men, 32–35 inches for women',              score: 3 },
+      { label: 'Men > 102 cm  /  Women > 88 cm',   subLabel: 'approximately 40 inches or more for men, 35 inches or more for women',    score: 4 },
     ],
   },
   {
@@ -240,16 +240,19 @@ function ContinueButton({ onClick, children }) {
 }
 
 // FINDRISC-style option button (radio with score badge)
-function OptionButton({ label, score, selected, onClick }) {
+function OptionButton({ label, subLabel, score, selected, onClick }) {
   return (
     <button onClick={onClick} style={{ width:'100%', padding:'14px 18px', border:`2px solid ${selected ? BLUE : '#e2e8f0'}`, borderRadius:'10px', backgroundColor: selected ? '#eff6ff' : '#ffffff', color: selected ? BLUE : '#334155', fontSize:'0.9375rem', fontWeight: selected ? 600 : 400, cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', transition:'border-color 120ms ease, background-color 120ms ease', fontFamily:font }}>
       <span style={{ display:'flex', alignItems:'center', gap:'12px' }}>
         <span style={{ width:'18px', height:'18px', borderRadius:'50%', flexShrink:0, border:`2px solid ${selected ? BLUE : '#cbd5e1'}`, backgroundColor: selected ? BLUE : 'transparent', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
           {selected && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><circle cx="4" cy="4" r="3" fill="white"/></svg>}
         </span>
-        {label}
+        <span>
+          <span style={{ display:'block' }}>{label}</span>
+          {subLabel && <span style={{ display:'block', fontSize:'0.72rem', fontWeight:400, color: selected ? '#60a5fa' : '#94a3b8', marginTop:'2px' }}>{subLabel}</span>}
+        </span>
       </span>
-      <span style={{ fontSize:'0.75rem', fontWeight:700, color: selected ? BLUE : '#94a3b8', whiteSpace:'nowrap', backgroundColor: selected ? '#dbeafe' : '#f1f5f9', padding:'2px 8px', borderRadius:'999px' }}>+{score} pts</span>
+      <span style={{ fontSize:'0.75rem', fontWeight:700, color: selected ? BLUE : '#94a3b8', whiteSpace:'nowrap', backgroundColor: selected ? '#dbeafe' : '#f1f5f9', padding:'2px 8px', borderRadius:'999px', flexShrink:0 }}>+{score} pts</span>
     </button>
   );
 }
@@ -343,11 +346,10 @@ function HomeScreen({ onStart }) {
 // ─── FINDRISC form ────────────────────────────────────────────────────────────
 
 function FindriscForm({ onBack, onResult }) {
-  const [answers,   setAnswers]   = useState({});
-  const [calcHov,   setCalcHov]   = useState(false);
-  const [heightCm,  setHeightCm]  = useState('');
-  const [weightKg,  setWeightKg]  = useState('');
-  const [trouserIn, setTrouserIn] = useState('');
+  const [answers,  setAnswers]  = useState({});
+  const [calcHov,  setCalcHov]  = useState(false);
+  const [heightCm, setHeightCm] = useState('');
+  const [weightKg, setWeightKg] = useState('');
 
   const answered = Object.keys(answers).length;
   const total    = FINDRISC_QUESTIONS.length;
@@ -360,13 +362,8 @@ function FindriscForm({ onBack, onResult }) {
       setAnswers(p => ({ ...p, bmi: bmi < 25 ? 0 : bmi <= 30 ? 1 : 2 }));
     }
   };
-  const handleHeightChange = v => { setHeightCm(v);  autoSelectBMI(v, weightKg); };
-  const handleWeightChange = v => { setWeightKg(v);  autoSelectBMI(heightCm, v); };
-  const handleTrouserChange = v => {
-    setTrouserIn(v);
-    const n = parseInt(v, 10);
-    if (!isNaN(n) && n > 0) setAnswers(p => ({ ...p, waist: n <= 30 ? 0 : n <= 34 ? 1 : 2 }));
-  };
+  const handleHeightChange = v => { setHeightCm(v); autoSelectBMI(v, weightKg); };
+  const handleWeightChange = v => { setWeightKg(v); autoSelectBMI(heightCm, v); };
 
   const bmiVal = (() => {
     const hN = parseFloat(heightCm), wN = parseFloat(weightKg);
@@ -401,7 +398,7 @@ function FindriscForm({ onBack, onResult }) {
               </div>
               <div style={{ display:'flex', flexDirection:'column', gap:'8px', paddingLeft:'42px' }}>
                 {q.options.map((opt, oi) => (
-                  <OptionButton key={oi} label={opt.label} score={opt.score} selected={answers[q.id] === oi} onClick={() => setAnswers(p => ({ ...p, [q.id]: oi }))} />
+                  <OptionButton key={oi} label={opt.label} subLabel={opt.subLabel} score={opt.score} selected={answers[q.id] === oi} onClick={() => setAnswers(p => ({ ...p, [q.id]: oi }))} />
                 ))}
 
                 {q.id === 'bmi' && (
@@ -428,16 +425,9 @@ function FindriscForm({ onBack, onResult }) {
                 )}
 
                 {q.id === 'waist' && (
-                  <div style={{ marginTop:'10px', padding:'14px 16px', backgroundColor:'#f8fafc', borderRadius:'10px', border:'1px solid #e2e8f0' }}>
-                    <p style={{ margin:'0 0 10px', fontSize:'0.72rem', fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.06em' }}>Trouser Size Helper (optional)</p>
-                    <div style={{ display:'flex', gap:'12px', alignItems:'flex-end' }}>
-                      <div>
-                        <p style={{ margin:'0 0 4px', fontSize:'0.75rem', color:'#64748b' }}>Trouser / pant size</p>
-                        <StyledNumberInput value={trouserIn} onChange={handleTrouserChange} placeholder="e.g. 34" min={20} max={60} unit="inches" />
-                      </div>
-                    </div>
-                    {trouserIn && <p style={{ margin:'8px 0 0', fontSize:'0.72rem', color:'#94a3b8' }}>Size {trouserIn}" — waist category auto-selected above</p>}
-                  </div>
+                  <p style={{ margin:'10px 0 0', fontSize:'0.78rem', color:'#94a3b8', lineHeight:1.6 }}>
+                    Waist is measured at navel level. If the patient is unsure of their measurement, trouser or pant size can be used as a rough estimate using the inch values shown above.
+                  </p>
                 )}
               </div>
             </div>
