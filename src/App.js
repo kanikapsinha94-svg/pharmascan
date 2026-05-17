@@ -94,22 +94,39 @@ function getCardioRiskInfo(pct) {
   };
 }
 
+function getHba1cLabel(hba1cPct) {
+  const h = Math.round(hba1cPct * 10) / 10;
+  if (h > 9)   return 'Significantly above target — urgent review recommended';
+  if (h > 7)   return 'Above target — review recommended';
+  if (h === 7) return 'Borderline';
+  return 'At target';
+}
+
 function getDiabetesCareGaps({ hba1cKnown, hba1cPct, lastSeen, medication, complications }) {
   const gaps = [];
   if (hba1cKnown && hba1cPct !== null) {
-    if (hba1cPct > 9)
-      gaps.push({ title: 'HbA1c significantly above target (>75 mmol/mol / >9%)', recommendation: 'Urgent referral to GP or diabetes team. Medication review and intensification is likely required.' });
-    else if (hba1cPct >= 7)
-      gaps.push({ title: 'HbA1c above target (53–75 mmol/mol / 7–9%)', recommendation: 'Diabetes review with GP or diabetes nurse recommended to optimise blood glucose control.' });
+    const label = getHba1cLabel(hba1cPct);
+    if (label === 'Significantly above target — urgent review recommended')
+      gaps.push({ title: 'HbA1c — significantly above target', recommendation: 'Urgent referral to GP or diabetes team. Medication review and intensification is likely required.' });
+    else if (label === 'Above target — review recommended')
+      gaps.push({ title: 'HbA1c — above target', recommendation: 'Diabetes review with GP or diabetes nurse recommended to optimise blood glucose control.' });
+    else if (label === 'Borderline')
+      gaps.push({ title: 'HbA1c — borderline', recommendation: 'HbA1c is at the borderline threshold. Recommend discussing with treating physician at next visit.' });
   } else if (!hba1cKnown) {
     gaps.push({ title: 'HbA1c result unknown to patient', recommendation: 'Encourage the patient to have a blood test and ask their care team for their result. Regular HbA1c monitoring is essential.' });
   }
-  if (lastSeen === 'over12mo')
-    gaps.push({ title: 'No diabetes review in over 12 months', recommendation: 'This patient is significantly overdue for a diabetes review. Urgent GP appointment recommended.' });
-  else if (lastSeen === '6to12mo')
-    gaps.push({ title: 'Diabetes review overdue (6–12 months since last appointment)', recommendation: 'Patient should book a diabetes review with their GP or diabetes nurse soon.' });
-  if (medication === 'none')
-    gaps.push({ title: 'Not currently on diabetes medication', recommendation: 'A GP review can confirm whether medication is appropriate. Diet-controlled diabetes still requires regular monitoring.' });
+  const noMeds     = medication === 'none';
+  const longOverdue = lastSeen === 'over12mo';
+  if (noMeds && longOverdue) {
+    gaps.push({ title: 'No diabetes medication and no review in over 12 months', recommendation: 'Urgent GP referral recommended — patient is overdue for a diabetes review and is not currently on any diabetes medication.' });
+  } else {
+    if (longOverdue)
+      gaps.push({ title: 'No diabetes review in over 12 months', recommendation: 'This patient is overdue for a diabetes review. A GP or diabetes nurse appointment is recommended.' });
+    else if (lastSeen === '6to12mo')
+      gaps.push({ title: 'Diabetes review overdue (6–12 months since last appointment)', recommendation: 'Patient should book a diabetes review with their GP or diabetes nurse soon.' });
+    if (noMeds)
+      gaps.push({ title: 'Not currently on diabetes medication', recommendation: 'A GP review can confirm whether medication is appropriate. Diet-controlled diabetes still requires regular monitoring.' });
+  }
   if (complications)
     gaps.push({ title: 'Known diabetes complications present', recommendation: 'Ensure the patient is under appropriate specialist care. Regular monitoring of affected organ systems is important.' });
   return gaps;
@@ -501,7 +518,7 @@ function FraminghamForm({ findriscScore, onBack, onResult }) {
         totalChol: totalChol ? tcN  : null,
         hdlChol:   hdlChol   ? hdlN : null,
       }),
-      sex,
+      sex, sbp: sbpN, bpTreated,
     });
   };
 
@@ -610,7 +627,7 @@ function FraminghamForm({ findriscScore, onBack, onResult }) {
 
 // ─── Framingham result ────────────────────────────────────────────────────────
 
-function FraminghamResult({ result, onBack, onContinue }) {
+function FraminghamResult({ result, knownDiabetic, onBack, onContinue }) {
   const { risk, estimated } = result;
   const cardio = getCardioRiskInfo(risk);
 
@@ -660,6 +677,17 @@ function FraminghamResult({ result, onBack, onContinue }) {
             </div>
           )}
         </div>
+
+        {knownDiabetic && (
+          <div style={{ display:'flex', gap:'10px', alignItems:'flex-start', backgroundColor:'#fffbeb', border:'1px solid #fcd34d', borderRadius:'12px', padding:'14px 16px', marginBottom:'20px' }}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="#b45309" style={{ flexShrink:0, marginTop:'1px' }}>
+              <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
+            </svg>
+            <p style={{ margin:0, fontSize:'0.8rem', color:'#92400e', lineHeight:1.6 }}>
+              <strong>Note:</strong> The Framingham Risk Score may underestimate cardiovascular risk in patients with established diabetes. This result should be interpreted with caution and reviewed by a treating physician.
+            </p>
+          </div>
+        )}
 
         <ContinueButton onClick={onContinue}>Continue to Results →</ContinueButton>
         <p style={{ textAlign:'center', marginTop:'16px', fontSize:'0.78rem', color:'#94a3b8' }}>Next: Full screening summary</p>
@@ -874,7 +902,7 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
 
 // ─── Referral letter ─────────────────────────────────────────────────────────
 
-function getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview }) {
+function getLetterRecommendations({ findriscScore, framinghamRisk, estimated, sbp, bpTreated, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview }) {
   const recs = [];
   if (knownDiabetic && diabetesControl) {
     const gaps = getDiabetesCareGaps(diabetesControl);
@@ -893,21 +921,20 @@ function getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic
     if (!cvdMeds.aspirin) recs.push('Consideration of aspirin or antiplatelet therapy — not currently prescribed.');
     if (!cvdMeds.statin)  recs.push('Initiation or review of statin therapy for cardiovascular risk reduction — not currently prescribed.');
     if (!cvdMeds.bpMeds)  recs.push('Blood pressure management review — antihypertensive therapy not currently prescribed.');
+    recs.push('Consider cardiovascular assessment and review of risk factor management with their treating physician.');
     recs.push('Cardiac follow-up and ongoing cardiovascular risk management.');
   } else if (!knownCVD && framinghamRisk !== null) {
     if (framinghamRisk >= 20) {
-      recs.push('Urgent fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides).');
-      recs.push('12-lead ECG and further cardiovascular investigation as clinically indicated.');
+      if (estimated) recs.push('Urgent fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides) — cholesterol values were unavailable at the time of screening.');
+      recs.push('Consider cardiovascular assessment and review of risk factor management with their treating physician.');
       if (!medicationReview || !medicationReview.onStatin)
         recs.push('Consideration of statin therapy as clinically appropriate — patient is not currently taking a statin.');
       recs.push('Reinforcement of cardiovascular risk-reducing lifestyle modifications.');
     } else if (framinghamRisk >= 10) {
-      recs.push('Fasting lipid profile to obtain precise cardiovascular risk data and guide management.');
-      recs.push('Review of blood pressure control and treatment optimisation if indicated.');
+      if (estimated) recs.push('Fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides) — cholesterol values were unavailable at the time of screening and are needed to guide management.');
+      if (bpTreated || (sbp !== null && sbp >= 140)) recs.push('Review of blood pressure control and treatment optimisation if indicated.');
       if (!medicationReview || !medicationReview.onStatin)
         recs.push('Discussion of statin therapy for cardiovascular risk reduction — patient is not currently taking a statin.');
-      if (!medicationReview || !medicationReview.onAspirin)
-        recs.push('Assessment of whether aspirin or antiplatelet therapy is appropriate — patient is not currently taking one.');
       recs.push('Lifestyle counselling focused on diet, physical activity, and smoking cessation where applicable.');
     }
   }
@@ -915,12 +942,14 @@ function getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic
 }
 
 function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview, onBack }) {
-  const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk     : null;
+  const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk      : null;
   const estimated      = !knownCVD && framinghamResult ? framinghamResult.estimated : false;
+  const sbp            = !knownCVD && framinghamResult ? framinghamResult.sbp       : null;
+  const bpTreated      = !knownCVD && framinghamResult ? framinghamResult.bpTreated : null;
   const findriscInfo   = !knownDiabetic && findriscScore !== null ? getRiskInfo(findriscScore) : null;
   const cardioInfo     = framinghamRisk !== null ? getCardioRiskInfo(framinghamRisk) : null;
   const careGaps       = knownDiabetic && diabetesControl ? getDiabetesCareGaps(diabetesControl) : null;
-  const recs           = getLetterRecommendations({ findriscScore, framinghamRisk, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview });
+  const recs           = getLetterRecommendations({ findriscScore, framinghamRisk, estimated, sbp, bpTreated, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview });
 
   const [pharmacyName,    setPharmacyName]    = useState('');
   const [pharmacistName,  setPharmacistName]  = useState('');
@@ -1059,7 +1088,7 @@ function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabet
                   <div style={{ borderLeft: '3px solid #475569', paddingLeft: '16px' }}>
                     <p style={{ margin: '0 0 10px', fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
                       This patient has a confirmed diagnosis of diabetes. A care gap assessment was conducted covering HbA1c status, last clinical review, current medication, and known complications.
-                      {diabetesControl.hba1cDisplay && <> The patient's most recent HbA1c was recorded as <strong>{diabetesControl.hba1cDisplay}</strong>.</>}
+                      {diabetesControl.hba1cDisplay && <> The patient's most recent HbA1c was recorded as <strong>{diabetesControl.hba1cDisplay}</strong>{diabetesControl.hba1cPct !== null && ` — ${getHba1cLabel(diabetesControl.hba1cPct)}`}.</>}
                       {careGaps.length === 0 && ' No care gaps were identified.'}
                     </p>
                     {careGaps.length > 0 && (
@@ -1146,6 +1175,7 @@ function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabet
             <div style={{ height: '1px', backgroundColor: '#e2e8f0', margin: '28px 0 20px' }} />
             <p style={{ margin: 0, fontSize: '0.78rem', color: '#94a3b8', lineHeight: 1.7, fontStyle: 'italic' }}>
               Disclaimer: This screening was conducted using validated published risk assessment tools. Results are intended to support clinical decision-making and do not constitute a diagnosis. Please review findings in the context of a full clinical assessment.
+              {!knownCVD && framinghamRisk !== null && <> Cardiovascular risk was estimated using the Framingham General CVD Risk Score (D'Agostino <em>et al.</em>, 2008). This tool has not been specifically validated for UAE or Gulf Arab populations. Results should be interpreted in the context of a full clinical assessment by a qualified healthcare professional.</>}
             </p>
           </div>
 
@@ -1222,7 +1252,7 @@ function DiabetesControlScreen({ onBack, onResult }) {
   const [calcHov,       setCalcHov]       = useState(false);
 
   const hba1cN   = hba1cRaw ? parseFloat(hba1cRaw) : null;
-  const hba1cPct = hba1cN !== null ? (hba1cUnit === 'mmol' ? hba1cN / 10.929 : hba1cN) : null;
+  const hba1cPct = hba1cN !== null ? (hba1cUnit === 'mmol' ? hba1cN / 10.929 + 2.15 : hba1cN) : null;
   const hba1cErr = hba1cRaw && hba1cN !== null
     ? ((hba1cUnit === 'mmol' ? (hba1cN < 20 || hba1cN > 220) : (hba1cN < 4 || hba1cN > 20))
       ? (hba1cUnit === 'mmol' ? 'Enter a value between 20 and 220 mmol/mol' : 'Enter a value between 4 and 20%')
@@ -1275,11 +1305,14 @@ function DiabetesControlScreen({ onBack, onResult }) {
                   unit={hba1cUnit === 'pct' ? '%' : 'mmol/mol'}
                   min={hba1cUnit === 'pct' ? 4 : 20} max={hba1cUnit === 'pct' ? 20 : 220} />
                 <FieldError msg={hba1cErr} />
-                {hba1cPct !== null && !hba1cErr && (
-                  <p style={{ margin:'8px 0 0', fontSize:'0.78rem', fontWeight:600, color: hba1cPct > 9 ? '#b91c1c' : hba1cPct >= 7 ? '#c2410c' : '#15803d' }}>
-                    {hba1cPct > 9 ? 'Significantly above target — urgent review needed' : hba1cPct >= 7 ? 'Above target — review recommended' : 'Within target range — well controlled'}
-                  </p>
-                )}
+                {hba1cPct !== null && !hba1cErr && (() => {
+                  const lbl = getHba1cLabel(hba1cPct);
+                  const color = lbl === 'Significantly above target — urgent review recommended' ? '#b91c1c'
+                    : lbl === 'Above target — review recommended' ? '#c2410c'
+                    : lbl === 'Borderline' ? '#b45309'
+                    : '#15803d';
+                  return <p style={{ margin:'8px 0 0', fontSize:'0.78rem', fontWeight:600, color }}>{lbl}</p>;
+                })()}
               </div>
             )}
             {hba1cKnown === false && (
@@ -1375,7 +1408,10 @@ function DiabetesControlResult({ diabetesControl, onBack, onContinue }) {
 
         {diabetesControl.hba1cDisplay && (
           <div style={{ backgroundColor:'#f8fafc', borderRadius:'10px', padding:'12px 16px', border:'1px solid #e2e8f0', marginBottom:'20px' }}>
-            <p style={{ margin:0, fontSize:'0.82rem', color:'#64748b' }}>HbA1c recorded: <strong style={{ color:'#0f172a' }}>{diabetesControl.hba1cDisplay}</strong></p>
+            <p style={{ margin:0, fontSize:'0.82rem', color:'#64748b' }}>
+              HbA1c recorded: <strong style={{ color:'#0f172a' }}>{diabetesControl.hba1cDisplay}</strong>
+              {diabetesControl.hba1cPct !== null && <> · <span style={{ color:'#475569' }}>{getHba1cLabel(diabetesControl.hba1cPct)}</span></>}
+            </p>
           </div>
         )}
 
@@ -1483,11 +1519,10 @@ function KnownCVDMedsScreen({ onBack, onContinue }) {
 // ─── Medication review (post-Framingham, risk ≥ 10%) ─────────────────────────
 
 function MedicationReviewScreen({ framinghamRisk, onBack, onContinue }) {
-  const [onStatin,  setOnStatin]  = useState(null);
-  const [onAspirin, setOnAspirin] = useState(null);
-  const [contHov,   setContHov]   = useState(false);
+  const [onStatin, setOnStatin] = useState(null);
+  const [contHov,  setContHov]  = useState(false);
 
-  const canContinue = onStatin !== null && onAspirin !== null;
+  const canContinue = onStatin !== null;
 
   return (
     <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
@@ -1503,20 +1538,17 @@ function MedicationReviewScreen({ framinghamRisk, onBack, onContinue }) {
 
         <div style={{ marginBottom:'24px' }}>
           <h2 style={{ margin:'0 0 6px', fontSize:'1.375rem', fontWeight:800, color:'#0f172a' }}>Current Medication Check</h2>
-          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Two quick questions — blood pressure medication was already recorded</p>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>One quick question before generating the referral</p>
         </div>
 
         <div style={{ display:'flex', flexDirection:'column', gap:'16px', marginBottom:'28px' }}>
           <FormCard number={1} label="Is this patient currently taking a statin?" hint="e.g. atorvastatin, rosuvastatin, simvastatin" answered={onStatin !== null}>
             <BinarySelector value={onStatin} onChange={setOnStatin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
           </FormCard>
-          <FormCard number={2} label="Is this patient currently taking aspirin or a blood thinner?" hint="e.g. aspirin, clopidogrel, warfarin, rivaroxaban" answered={onAspirin !== null}>
-            <BinarySelector value={onAspirin} onChange={setOnAspirin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
-          </FormCard>
         </div>
 
-        {!canContinue && <p style={{ textAlign:'center', fontSize:'0.82rem', color:'#94a3b8', marginBottom:'12px' }}>Answer both questions to continue</p>}
-        <button onClick={canContinue ? () => onContinue({ onStatin, onAspirin }) : undefined}
+        {!canContinue && <p style={{ textAlign:'center', fontSize:'0.82rem', color:'#94a3b8', marginBottom:'12px' }}>Answer the question to continue</p>}
+        <button onClick={canContinue ? () => onContinue({ onStatin }) : undefined}
           onMouseOver={() => canContinue && setContHov(true)} onMouseOut={() => setContHov(false)} disabled={!canContinue}
           style={{ width:'100%', padding:'18px 24px', border:'none', borderRadius:'12px', backgroundColor: canContinue ? (contHov ? '#1558a8' : BLUE) : '#e2e8f0', color: canContinue ? '#ffffff' : '#94a3b8', fontSize:'1.0625rem', fontWeight:700, cursor: canContinue ? 'pointer' : 'not-allowed', boxShadow: canContinue ? '0 4px 16px rgba(29,111,206,0.3)' : 'none', fontFamily:font }}>
           Continue to Summary →
@@ -1586,7 +1618,7 @@ export default function App() {
       return <FraminghamForm findriscScore={findriscScore} onBack={() => setScreen('framingham-pre')} onResult={r => { setFraminghamResult(r); setScreen('framingham-result'); }} />;
 
     case 'framingham-result':
-      return <FraminghamResult result={framinghamResult} onBack={() => setScreen('framingham')} onContinue={() => setScreen(framinghamResult.risk >= 10 ? 'medication-review' : 'results')} />;
+      return <FraminghamResult result={framinghamResult} knownDiabetic={knownDiabetic} onBack={() => setScreen('framingham')} onContinue={() => setScreen(framinghamResult.risk >= 10 ? 'medication-review' : 'results')} />;
 
     case 'medication-review':
       return <MedicationReviewScreen framinghamRisk={framinghamResult.risk} onBack={() => setScreen('framingham-result')} onContinue={m => { setMedicationReview(m); setScreen('results'); }} />;
