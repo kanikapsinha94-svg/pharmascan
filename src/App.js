@@ -317,6 +317,60 @@ function FieldError({ msg }) {
   return <p style={{ margin:'8px 0 0', fontSize:'0.78rem', color:'#dc2626' }}>{msg}</p>;
 }
 
+// ─── Pharmacy setup screen (shown once per session) ──────────────────────────
+
+function PharmacySetupScreen({ onStart }) {
+  const [pharmacyName,    setPharmacyName]    = useState('');
+  const [pharmacistName,  setPharmacistName]  = useState('');
+  const [hov,             setHov]             = useState(false);
+
+  const canStart = pharmacyName.trim().length > 0;
+  const submit   = () => { if (canStart) onStart({ pharmacyName: pharmacyName.trim(), pharmacistName: pharmacistName.trim() }); };
+
+  const fieldStyle = { width:'100%', padding:'11px 14px', border:'1.5px solid #e2e8f0', borderRadius:'10px', fontSize:'0.9375rem', color:'#0f172a', fontFamily:font, outline:'none', boxSizing:'border-box', backgroundColor:'#fff' };
+  const labelStyle = { display:'block', marginBottom:'6px', fontSize:'0.8125rem', fontWeight:600, color:'#374151' };
+
+  return (
+    <main style={{ minHeight:'100vh', backgroundColor:'#f8fafc', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:'32px 24px', fontFamily:font, color:'#1e293b' }}>
+      <div style={{ maxWidth:'480px', width:'100%', textAlign:'center' }}>
+
+        <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'72px', height:'72px', borderRadius:'20px', backgroundColor:BLUE, marginBottom:'24px', boxShadow:'0 8px 24px rgba(29,111,206,0.28)' }}>
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+            <rect x="14" y="6"  width="8"  height="24" rx="2" fill="white"/>
+            <rect x="6"  y="14" width="24" height="8"  rx="2" fill="white"/>
+          </svg>
+        </div>
+        <h1 style={{ margin:'0 0 8px', fontSize:'2.75rem', fontWeight:800, letterSpacing:'-0.04em', color:BLUE, lineHeight:1 }}>PharmaScan</h1>
+        <p style={{ margin:'0 0 32px', fontSize:'1rem', color:'#64748b', fontWeight:500 }}>NCD Risk Screening Tool</p>
+
+        <div style={{ backgroundColor:'#ffffff', borderRadius:'20px', padding:'36px 32px', boxShadow:'0 4px 32px rgba(15,23,42,0.08)', border:'1px solid #e2e8f0', textAlign:'left' }}>
+          <h2 style={{ margin:'0 0 6px', fontSize:'1.25rem', fontWeight:800, color:'#0f172a' }}>Welcome</h2>
+          <p style={{ margin:'0 0 28px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.65 }}>Enter your pharmacy details before you begin. These will appear on all referral letters generated this session.</p>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:'16px', marginBottom:'28px' }}>
+            <div>
+              <label style={labelStyle}>Pharmacy Name <span style={{ color:'#dc2626' }}>*</span></label>
+              <input value={pharmacyName} onChange={e => setPharmacyName(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="e.g. Al Barsha Community Pharmacy" autoFocus style={fieldStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Pharmacist Name</label>
+              <input value={pharmacistName} onChange={e => setPharmacistName(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="e.g. Dr. Sara Al Mansouri" style={fieldStyle} />
+            </div>
+          </div>
+
+          <button onClick={submit} onMouseOver={() => canStart && setHov(true)} onMouseOut={() => setHov(false)} disabled={!canStart}
+            style={{ width:'100%', padding:'16px 24px', border:'none', borderRadius:'12px', backgroundColor: canStart ? (hov ? '#1558a8' : BLUE) : '#e2e8f0', color: canStart ? '#ffffff' : '#94a3b8', fontSize:'1rem', fontWeight:700, cursor: canStart ? 'pointer' : 'not-allowed', boxShadow: canStart ? '0 4px 16px rgba(29,111,206,0.3)' : 'none', transition:'background-color 140ms ease', fontFamily:font }}>
+            Start →
+          </button>
+          {!canStart && <p style={{ textAlign:'center', margin:'10px 0 0', fontSize:'0.78rem', color:'#94a3b8' }}>Enter pharmacy name to continue</p>}
+        </div>
+
+        <p style={{ marginTop:'24px', fontSize:'0.78rem', color:'#94a3b8' }}>For use by licensed pharmacists in the UAE only.</p>
+      </div>
+    </main>
+  );
+}
+
 // ─── Home screen ──────────────────────────────────────────────────────────────
 
 function HomeScreen({ onStart }) {
@@ -984,7 +1038,7 @@ function getLetterRecommendations({ findriscScore, framinghamRisk, estimated, sb
   return recs;
 }
 
-function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview, onBack }) {
+function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview, pharmacyName: pharmacyNameProp, pharmacistName: pharmacistNameProp, onBack }) {
   const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk      : null;
   const estimated      = !knownCVD && framinghamResult ? framinghamResult.estimated : false;
   const sbp            = !knownCVD && framinghamResult ? framinghamResult.sbp       : null;
@@ -994,8 +1048,8 @@ function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabet
   const careGaps       = knownDiabetic && diabetesControl ? getDiabetesCareGaps(diabetesControl) : null;
   const recs           = getLetterRecommendations({ findriscScore, framinghamRisk, estimated, sbp, bpTreated, knownDiabetic, diabetesControl, knownCVD, cvdMeds, medicationReview });
 
-  const [pharmacyName,    setPharmacyName]    = useState('');
-  const [pharmacistName,  setPharmacistName]  = useState('');
+  const [pharmacyName,    setPharmacyName]    = useState(pharmacyNameProp   || '');
+  const [pharmacistName,  setPharmacistName]  = useState(pharmacistNameProp || '');
   const [emailHov,        setEmailHov]        = useState(false);
   const [printHov,        setPrintHov]        = useState(false);
 
@@ -1665,7 +1719,9 @@ function MedicationReviewScreen({ framinghamRisk, onBack, onContinue }) {
 // ─── App router ───────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [screen,            setScreen]            = useState('home');
+  const [screen,            setScreen]            = useState('setup');
+  const [pharmacyName,      setPharmacyName]      = useState('');
+  const [pharmacistName,    setPharmacistName]    = useState('');
   const [findriscScore,     setFindriscScore]      = useState(null);
   const [framinghamResult,  setFraminghamResult]   = useState(null);
   const [knownDiabetic,     setKnownDiabetic]      = useState(false);
@@ -1740,7 +1796,20 @@ export default function App() {
       return (
         <ReferralLetter
           {...sharedResultsProps}
+          pharmacyName={pharmacyName}
+          pharmacistName={pharmacistName}
           onBack={() => setScreen('results')}
+        />
+      );
+
+    case 'setup':
+      return (
+        <PharmacySetupScreen
+          onStart={({ pharmacyName: pn, pharmacistName: ph }) => {
+            setPharmacyName(pn);
+            setPharmacistName(ph);
+            setScreen('home');
+          }}
         />
       );
 
