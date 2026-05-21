@@ -837,7 +837,6 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
           {knownCVD && cvdResult ? (() => {
             const urgent  = cvdResult.urgent;
             const hasGaps = !urgent && cvdResult.gaps.length > 0;
-            const ok      = !urgent && cvdResult.gaps.length === 0;
             const cardBorder = urgent ? '#fca5a5' : hasGaps ? '#fdba74' : '#86efac';
             const barColor   = urgent ? '#b91c1c' : hasGaps ? '#c2410c' : '#15803d';
             const chipBg     = urgent ? '#fee2e2' : hasGaps ? '#fff7ed' : '#f0fdf4';
