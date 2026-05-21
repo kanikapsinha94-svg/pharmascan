@@ -132,6 +132,22 @@ function getDiabetesCareGaps({ hba1cKnown, hba1cPct, lastSeen, medication, compl
   return gaps;
 }
 
+function getCVDCareGaps({ lastSeen, aspirin, statin, bpMeds, symptoms }) {
+  if (symptoms) return { urgent: true, gaps: [] };
+  const gaps = [];
+  if (lastSeen === 'over12mo')
+    gaps.push({ title: 'No cardiology or GP review in over 12 months', recommendation: 'This patient is overdue for a cardiology or GP review. An appointment should be arranged promptly.' });
+  else if (lastSeen === '6to12mo')
+    gaps.push({ title: 'Cardiology or GP review overdue (6–12 months)', recommendation: 'Patient should book a review with their cardiologist or GP soon.' });
+  if (!aspirin)
+    gaps.push({ title: 'Not currently on aspirin or antiplatelet therapy', recommendation: 'Antiplatelet therapy is a cornerstone of secondary CVD prevention. Review with prescribing physician is recommended.' });
+  if (!statin)
+    gaps.push({ title: 'Not currently on a statin', recommendation: 'Statin therapy is recommended for all patients with established CVD. Review with prescribing physician is recommended.' });
+  if (!bpMeds)
+    gaps.push({ title: 'Not currently on blood pressure medication', recommendation: 'Blood pressure management is important in CVD secondary prevention. Review with prescribing physician is recommended.' });
+  return { urgent: false, gaps };
+}
+
 // ─── Framingham calculation (D'Agostino 2008) ────────────────────────────────
 // Cholesterol inputs in mmol/L; internally converted to mg/dL.
 // Population averages used when cholesterol not entered:
@@ -739,8 +755,9 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
   const cardioInfo     = framinghamRisk !== null ? getCardioRiskInfo(framinghamRisk) : { level:'High Risk', color:'#b91c1c', bannerBg:'#fee2e2', bannerBorder:'#fca5a5', bg:'#fee2e2', border:'#fca5a5' };
 
   // Referral logic
+  const cvdResult        = knownCVD && cvdMeds ? getCVDCareGaps(cvdMeds) : null;
   const diabetesReferral = knownDiabetic ? (careGaps && careGaps.length > 0) : (findriscScore !== null && findriscScore >= 15);
-  const cvdReferral      = knownCVD || (framinghamRisk !== null && framinghamRisk >= 10);
+  const cvdReferral      = knownCVD ? (cvdResult && (cvdResult.urgent || cvdResult.gaps.length > 0)) : (framinghamRisk !== null && framinghamRisk >= 10);
   const referralNeeded   = diabetesReferral || cvdReferral;
 
   const referralReasons = [];
@@ -748,23 +765,30 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
     referralReasons.push(`${careGaps.length} diabetes care gap${careGaps.length > 1 ? 's' : ''} identified — see Care Gap Summary for details and recommendations.`);
   else if (!knownDiabetic && findriscScore !== null && findriscScore >= 15)
     referralReasons.push(`FINDRISC score of ${findriscScore}/26 (${findriscInfo.level}) — refer for fasting blood glucose or HbA1c testing and consideration of a diabetes prevention programme.`);
-  if (knownCVD)
-    referralReasons.push('Known cardiovascular disease — urgent review of secondary prevention medications and cardiovascular management by a physician is recommended.');
-  else if (framinghamRisk !== null && framinghamRisk >= 20)
-    referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (High Risk) — refer for full lipid profile and cardiovascular risk management.`);
-  else if (framinghamRisk !== null && framinghamRisk >= 10)
-    referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (Intermediate Risk) — refer for full lipid profile review and cardiovascular risk factor management.`);
+  if (knownCVD && cvdResult) {
+    if (cvdResult.urgent)
+      referralReasons.push('Known CVD — new or worsening symptoms reported (chest pain, breathlessness, or palpitations). Urgent physician assessment is required.');
+    else if (cvdResult.gaps.length > 0)
+      referralReasons.push(`Known CVD — ${cvdResult.gaps.length} care gap${cvdResult.gaps.length > 1 ? 's' : ''} identified: ${cvdResult.gaps.map(g => g.title).join('; ')}.`);
+  } else if (!knownCVD) {
+    if (framinghamRisk !== null && framinghamRisk >= 20)
+      referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (High Risk) — refer for cardiovascular risk management.`);
+    else if (framinghamRisk !== null && framinghamRisk >= 10)
+      referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (Intermediate Risk) — refer for cardiovascular risk factor management.`);
+  }
 
   // Narrative text
   const narrativeText = (() => {
-    if (knownDiabetic && knownCVD)
-      return `This patient has confirmed diabetes and known cardiovascular disease — both are significant risk factors requiring coordinated medical management. Urgent physician referral is recommended.`;
+    if (knownCVD && cvdResult) {
+      const cvdSuffix = knownDiabetic ? ' This patient also has confirmed diabetes.' : '';
+      if (cvdResult.urgent)
+        return `This patient has known cardiovascular disease and has reported new or worsening symptoms. Urgent physician assessment is required.${cvdSuffix}`;
+      if (cvdResult.gaps.length === 0)
+        return `This patient has known cardiovascular disease that appears well managed — all key secondary prevention medications are in place and review is up to date.${cvdSuffix} Encourage continued adherence and regular follow-up.`;
+      return `This patient has known cardiovascular disease. ${cvdResult.gaps.length} care gap${cvdResult.gaps.length > 1 ? 's were' : ' was'} identified. Physician review is recommended.${cvdSuffix}`;
+    }
     if (knownDiabetic && framinghamRisk !== null)
       return `This patient has confirmed diabetes. Their 10-year cardiovascular risk is ${framinghamRisk}% (${cardioInfo.level}). These conditions are closely linked and require coordinated physician management.`;
-    if (knownCVD && findriscScore !== null)
-      return `This patient has known cardiovascular disease and a FINDRISC score of ${findriscScore}/26 (${findriscInfo ? findriscInfo.level : ''}). Comprehensive cardiovascular and metabolic management is strongly recommended.`;
-    if (knownCVD && knownDiabetic)
-      return `This patient has both confirmed diabetes and known cardiovascular disease. Urgent physician referral for comprehensive NCD management is required.`;
     if (findriscScore !== null && framinghamRisk !== null)
       return combinedNarrativeText(findriscScore, framinghamRisk);
     return 'Screening complete. Please review the results above and advise the patient accordingly.';
@@ -810,17 +834,28 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
           )}
 
           {/* CVD card */}
-          {knownCVD ? (
-            <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:'1px solid #fca5a5', boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
-              <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:'#b91c1c', borderRadius:'16px 16px 0 0' }} />
-              <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Cardiovascular</p>
-              <p style={{ margin:'0 0 16px', fontSize:'1.0625rem', fontWeight:800, color:'#b91c1c', lineHeight:1.3 }}>Known CVD</p>
-              <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:'#fee2e2', borderRadius:'8px', border:'1px solid #fca5a5' }}>
-                <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:'#b91c1c', flexShrink:0 }} />
-                <span style={{ fontSize:'0.72rem', fontWeight:700, color:'#b91c1c' }}>High Risk</span>
+          {knownCVD && cvdResult ? (() => {
+            const urgent  = cvdResult.urgent;
+            const hasGaps = !urgent && cvdResult.gaps.length > 0;
+            const ok      = !urgent && cvdResult.gaps.length === 0;
+            const cardBorder = urgent ? '#fca5a5' : hasGaps ? '#fdba74' : '#86efac';
+            const barColor   = urgent ? '#b91c1c' : hasGaps ? '#c2410c' : '#15803d';
+            const chipBg     = urgent ? '#fee2e2' : hasGaps ? '#fff7ed' : '#f0fdf4';
+            const chipBorder = urgent ? '#fca5a5' : hasGaps ? '#fdba74' : '#86efac';
+            const chipText   = urgent ? '#b91c1c' : hasGaps ? '#c2410c' : '#15803d';
+            const chipLabel  = urgent ? 'Urgent Referral' : hasGaps ? `${cvdResult.gaps.length} gap${cvdResult.gaps.length > 1 ? 's' : ''} found` : 'Well Managed';
+            return (
+              <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${cardBorder}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
+                <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:barColor, borderRadius:'16px 16px 0 0' }} />
+                <p style={{ margin:'10px 0 10px', fontSize:'0.68rem', fontWeight:700, color:'#94a3b8', letterSpacing:'0.09em', textTransform:'uppercase' }}>Cardiovascular</p>
+                <p style={{ margin:'0 0 16px', fontSize:'1.0625rem', fontWeight:800, color:barColor, lineHeight:1.3 }}>Known CVD</p>
+                <div style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'5px 10px', backgroundColor:chipBg, borderRadius:'8px', border:`1px solid ${chipBorder}` }}>
+                  <div style={{ width:'6px', height:'6px', borderRadius:'50%', backgroundColor:chipText, flexShrink:0 }} />
+                  <span style={{ fontSize:'0.72rem', fontWeight:700, color:chipText }}>{chipLabel}</span>
+                </div>
               </div>
-            </div>
-          ) : (
+            );
+          })() : (
             framinghamRisk !== null && (
               <div style={{ backgroundColor:'#ffffff', borderRadius:'16px', padding:'20px', border:`1px solid ${cardioInfo.bannerBorder}`, boxShadow:'0 2px 8px rgba(15,23,42,0.05)', position:'relative', overflow:'hidden' }}>
                 <div style={{ position:'absolute', top:0, left:0, right:0, height:'4px', backgroundColor:cardioInfo.color, borderRadius:'16px 16px 0 0' }} />
@@ -879,15 +914,21 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
               </div>
               <p style={{ margin:0, fontSize:'1.0625rem', fontWeight:700, color:'#15803d' }}>No Referral Required</p>
             </div>
-            <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#166534', lineHeight:1.65 }}>Both assessments are within the low-risk range. Share the following lifestyle advice with the patient.</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-              {LIFESTYLE_ADVICE.map((advice, i) => (
-                <div key={i} style={{ display:'flex', gap:'10px', alignItems:'flex-start' }}>
-                  <div style={{ width:'5px', height:'5px', borderRadius:'50%', backgroundColor:'#16a34a', flexShrink:0, marginTop:'8px' }} />
-                  <p style={{ margin:0, fontSize:'0.875rem', color:'#166534', lineHeight:1.65 }}>{advice}</p>
+            {knownCVD && cvdResult && !cvdResult.urgent && cvdResult.gaps.length === 0 ? (
+              <p style={{ margin:0, fontSize:'0.875rem', color:'#166534', lineHeight:1.65 }}>Cardiovascular management appears well maintained. Encourage this patient to continue their current medications, keep regular appointments, and contact their doctor promptly if any new symptoms develop.</p>
+            ) : (
+              <>
+                <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#166534', lineHeight:1.65 }}>Both assessments are within the low-risk range. Share the following lifestyle advice with the patient.</p>
+                <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                  {LIFESTYLE_ADVICE.map((advice, i) => (
+                    <div key={i} style={{ display:'flex', gap:'10px', alignItems:'flex-start' }}>
+                      <div style={{ width:'5px', height:'5px', borderRadius:'50%', backgroundColor:'#16a34a', flexShrink:0, marginTop:'8px' }} />
+                      <p style={{ margin:0, fontSize:'0.875rem', color:'#166534', lineHeight:1.65 }}>{advice}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         )}
 
@@ -917,12 +958,15 @@ function getLetterRecommendations({ findriscScore, framinghamRisk, estimated, sb
     recs.push('Assessment of modifiable risk factors including dietary habits, physical activity level, and body weight.');
   }
   if (knownCVD && cvdMeds) {
-    recs.push('Review and optimisation of secondary prevention therapy for established cardiovascular disease.');
-    if (!cvdMeds.aspirin) recs.push('Consideration of aspirin or antiplatelet therapy — not currently prescribed.');
-    if (!cvdMeds.statin)  recs.push('Initiation or review of statin therapy for cardiovascular risk reduction — not currently prescribed.');
-    if (!cvdMeds.bpMeds)  recs.push('Blood pressure management review — antihypertensive therapy not currently prescribed.');
-    recs.push('Consider cardiovascular assessment and review of risk factor management with their treating physician.');
-    recs.push('Cardiac follow-up and ongoing cardiovascular risk management.');
+    const cvdResult = getCVDCareGaps(cvdMeds);
+    if (cvdResult.urgent) {
+      recs.push('URGENT: This patient has reported new or worsening cardiovascular symptoms (chest pain, breathlessness, or palpitations). Prompt physician assessment is required.');
+    } else if (cvdResult.gaps.length === 0) {
+      recs.push('Cardiovascular management appears well maintained. Encourage continued adherence to current treatment plan and regular review with their cardiologist or GP.');
+    } else {
+      cvdResult.gaps.forEach(g => recs.push(g.recommendation));
+      recs.push('Consider cardiovascular assessment and review of risk factor management with their treating physician.');
+    }
   } else if (!knownCVD && framinghamRisk !== null) {
     if (framinghamRisk >= 20) {
       if (estimated) recs.push('Urgent fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides) — cholesterol values were unavailable at the time of screening.');
@@ -1114,18 +1158,30 @@ function ReferralLetter({ findriscScore, framinghamResult, knownDiabetic, diabet
 
             {/* CVD section */}
             <div style={{ marginBottom: '28px' }}>
-              {knownCVD ? (
-                <>
-                  <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: '#b91c1c', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                    Cardiovascular Risk — Known Heart Disease
-                  </p>
-                  <div style={{ borderLeft: '3px solid #b91c1c', paddingLeft: '16px' }}>
-                    <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
-                      This patient has a known history of cardiovascular disease (previous heart attack or diagnosed heart condition). The Framingham risk model was therefore not applied. Secondary prevention medication review was conducted and findings are detailed in the recommendations below.
+              {knownCVD && cvdMeds ? (() => {
+                const cvdResult  = getCVDCareGaps(cvdMeds);
+                const accentColor = cvdResult.urgent ? '#b91c1c' : cvdResult.gaps.length > 0 ? '#c2410c' : '#15803d';
+                const heading     = cvdResult.urgent ? 'Cardiovascular — Known Heart Disease (Urgent)'
+                  : cvdResult.gaps.length > 0 ? 'Cardiovascular — Known Heart Disease (Care Gaps Identified)'
+                  : 'Cardiovascular — Known Heart Disease (Well Managed)';
+                return (
+                  <>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: accentColor, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                      {heading}
                     </p>
-                  </div>
-                </>
-              ) : cardioInfo && framinghamRisk !== null && (
+                    <div style={{ borderLeft: `3px solid ${accentColor}`, paddingLeft: '16px' }}>
+                      <p style={{ margin: 0, fontSize: '0.9375rem', color: '#1e293b', lineHeight: 1.8 }}>
+                        {cvdResult.urgent
+                          ? 'This patient has a known history of cardiovascular disease and has reported new or worsening symptoms including chest pain, breathlessness, or palpitations. Urgent clinical assessment is required.'
+                          : cvdResult.gaps.length === 0
+                            ? 'This patient has a known history of cardiovascular disease. A care gap assessment was conducted and no gaps were identified — the patient is on all key secondary prevention medications and review is up to date.'
+                            : `This patient has a known history of cardiovascular disease. A care gap assessment identified ${cvdResult.gaps.length} gap${cvdResult.gaps.length > 1 ? 's' : ''}: ${cvdResult.gaps.map(g => g.title).join('; ')}.`
+                        }
+                      </p>
+                    </div>
+                  </>
+                );
+              })() : cardioInfo && framinghamRisk !== null && (
                 <>
                   <p style={{ margin: '0 0 10px', fontSize: '0.8125rem', fontWeight: 700, color: cardioInfo.color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                     Cardiovascular Risk — Framingham Risk Score: {framinghamRisk}%
@@ -1455,58 +1511,107 @@ function FraminghamPreScreen({ onBack, onKnownCVD, onNoCVD }) {
 
 // ─── Known CVD medication review ─────────────────────────────────────────────
 
-function KnownCVDMedsScreen({ onBack, onContinue }) {
-  const [aspirin, setAspirin] = useState(null);
-  const [statin,  setStatin]  = useState(null);
-  const [bpMeds,  setBpMeds]  = useState(null);
-  const [contHov, setContHov] = useState(false);
+function CVDCareGapScreen({ onBack, onContinue }) {
+  const [lastSeen,  setLastSeen]  = useState(null);
+  const [aspirin,   setAspirin]   = useState(null);
+  const [statin,    setStatin]    = useState(null);
+  const [bpMeds,    setBpMeds]    = useState(null);
+  const [symptoms,  setSymptoms]  = useState(null);
+  const [contHov,   setContHov]   = useState(false);
 
-  const canContinue = aspirin !== null && statin !== null && bpMeds !== null;
-  const gaps = [];
-  if (aspirin === false) gaps.push('Aspirin / antiplatelet therapy not prescribed — discuss with prescribing physician.');
-  if (statin  === false) gaps.push('Statin therapy not prescribed — cardiovascular risk reduction should be discussed with physician.');
-  if (bpMeds  === false) gaps.push('Blood pressure medication not prescribed — blood pressure management review recommended.');
+  const canContinue = lastSeen !== null && aspirin !== null && statin !== null && bpMeds !== null && symptoms !== null;
+  const cvdResult   = canContinue ? getCVDCareGaps({ lastSeen, aspirin, statin, bpMeds, symptoms }) : null;
+
+  const lastSeenOpts = [
+    { value: 'within6mo', label: 'Within the last 6 months' },
+    { value: '6to12mo',   label: '6 to 12 months ago'       },
+    { value: 'over12mo',  label: 'More than 12 months ago'  },
+  ];
 
   return (
     <div style={{ minHeight:'100vh', backgroundColor:'#f8fafc', fontFamily:font, color:'#1e293b' }}>
       <PageHeader subtitle="Known Cardiovascular Disease" onBack={onBack} />
       <div style={{ maxWidth:'620px', margin:'0 auto', padding:'32px 24px 48px' }}>
-        <div style={{ backgroundColor:'#fee2e2', border:'1px solid #fca5a5', borderRadius:'14px', padding:'18px 22px', marginBottom:'24px', display:'flex', alignItems:'center', gap:'12px' }}>
-          <div style={{ width:'10px', height:'10px', borderRadius:'50%', backgroundColor:'#b91c1c', flexShrink:0 }} />
-          <div>
-            <p style={{ margin:'0 0 2px', fontSize:'1rem', fontWeight:700, color:'#b91c1c' }}>High Cardiovascular Risk</p>
-            <p style={{ margin:0, fontSize:'0.82rem', color:'#b91c1c', opacity:0.8 }}>Known heart disease — physician referral is recommended</p>
-          </div>
-        </div>
+
         <div style={{ marginBottom:'24px' }}>
-          <h2 style={{ margin:'0 0 6px', fontSize:'1.375rem', fontWeight:800, color:'#0f172a' }}>Medication Review</h2>
-          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Check which secondary prevention medications this patient is currently taking</p>
+          <h2 style={{ margin:'0 0 6px', fontSize:'1.375rem', fontWeight:800, color:'#0f172a' }}>CVD Care Gap Identifier</h2>
+          <p style={{ margin:0, fontSize:'0.875rem', color:'#64748b' }}>Five quick questions to assess current cardiovascular management</p>
         </div>
+
         <div style={{ display:'flex', flexDirection:'column', gap:'16px', marginBottom:'24px' }}>
-          <FormCard number={1} label="Currently taking aspirin or antiplatelet medication?" answered={aspirin !== null}>
-            <BinarySelector value={aspirin} onChange={setAspirin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
-          </FormCard>
-          <FormCard number={2} label="Currently taking a statin?" hint="e.g. atorvastatin, simvastatin, rosuvastatin" answered={statin !== null}>
-            <BinarySelector value={statin} onChange={setStatin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
-          </FormCard>
-          <FormCard number={3} label="Currently taking blood pressure medication?" answered={bpMeds !== null}>
-            <BinarySelector value={bpMeds} onChange={setBpMeds} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
-          </FormCard>
-        </div>
-        {canContinue && gaps.length > 0 && (
-          <div style={{ backgroundColor:'#fff7ed', border:'1px solid #fdba74', borderRadius:'14px', padding:'18px 22px', marginBottom:'24px' }}>
-            <p style={{ margin:'0 0 12px', fontSize:'0.875rem', fontWeight:700, color:'#c2410c' }}>Medication Gaps Identified</p>
+
+          {/* Q1 — Last review */}
+          <FormCard number={1} label="When did you last see your cardiologist or GP for your heart condition?" answered={lastSeen !== null}>
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-              {gaps.map((g, i) => (
-                <div key={i} style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>
-                  <div style={{ width:'5px', height:'5px', borderRadius:'50%', backgroundColor:'#c2410c', flexShrink:0, marginTop:'7px' }} />
-                  <p style={{ margin:0, fontSize:'0.875rem', color:'#7c2d12', lineHeight:1.6 }}>{g}</p>
-                </div>
+              {lastSeenOpts.map(o => (
+                <button key={o.value} onClick={() => setLastSeen(o.value)}
+                  style={{ padding:'10px 16px', border:`2px solid ${lastSeen === o.value ? BLUE : '#e2e8f0'}`, borderRadius:'10px', backgroundColor: lastSeen === o.value ? '#eff6ff' : '#fff', color: lastSeen === o.value ? BLUE : '#334155', fontWeight: lastSeen === o.value ? 700 : 500, fontSize:'0.9rem', cursor:'pointer', textAlign:'left', fontFamily:font }}>
+                  {o.label}
+                </button>
               ))}
             </div>
-          </div>
+          </FormCard>
+
+          {/* Q2 — Aspirin */}
+          <FormCard number={2} label="Are you currently on aspirin or a blood thinner?" hint="e.g. aspirin, clopidogrel, warfarin, rivaroxaban" answered={aspirin !== null}>
+            <BinarySelector value={aspirin} onChange={setAspirin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+
+          {/* Q3 — Statin */}
+          <FormCard number={3} label="Are you currently on a statin?" hint="e.g. atorvastatin, rosuvastatin, simvastatin" answered={statin !== null}>
+            <BinarySelector value={statin} onChange={setStatin} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+
+          {/* Q4 — BP meds */}
+          <FormCard number={4} label="Are you currently on a blood pressure medication?" answered={bpMeds !== null}>
+            <BinarySelector value={bpMeds} onChange={setBpMeds} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+
+          {/* Q5 — Symptoms */}
+          <FormCard number={5} label="Do you have any new or worsening symptoms?" hint="such as chest pain, breathlessness, or palpitations" answered={symptoms !== null}>
+            <BinarySelector value={symptoms} onChange={setSymptoms} options={[{ value:true, label:'Yes' }, { value:false, label:'No' }]} />
+          </FormCard>
+        </div>
+
+        {/* Outcome preview */}
+        {cvdResult && (
+          cvdResult.urgent ? (
+            <div style={{ display:'flex', gap:'12px', alignItems:'flex-start', backgroundColor:'#fef2f2', border:'1px solid #fca5a5', borderRadius:'14px', padding:'18px 20px', marginBottom:'24px' }}>
+              <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'30px', height:'30px', borderRadius:'8px', backgroundColor:'#dc2626', flexShrink:0 }}>
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="white"><path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/></svg>
+              </div>
+              <div>
+                <p style={{ margin:'0 0 4px', fontSize:'0.9375rem', fontWeight:700, color:'#b91c1c' }}>Urgent Referral Required</p>
+                <p style={{ margin:0, fontSize:'0.875rem', color:'#7f1d1d', lineHeight:1.6 }}>New or worsening cardiovascular symptoms have been reported. This patient requires prompt physician assessment.</p>
+              </div>
+            </div>
+          ) : cvdResult.gaps.length === 0 ? (
+            <div style={{ display:'flex', gap:'12px', alignItems:'flex-start', backgroundColor:'#f0fdf4', border:'1px solid #86efac', borderRadius:'14px', padding:'18px 20px', marginBottom:'24px' }}>
+              <div style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:'30px', height:'30px', borderRadius:'8px', backgroundColor:'#16a34a', flexShrink:0 }}>
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="white"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/></svg>
+              </div>
+              <div>
+                <p style={{ margin:'0 0 4px', fontSize:'0.9375rem', fontWeight:700, color:'#15803d' }}>No Referral Required</p>
+                <p style={{ margin:0, fontSize:'0.875rem', color:'#166534', lineHeight:1.6 }}>Cardiovascular management appears well maintained. Encourage continued adherence and regular follow-up.</p>
+              </div>
+            </div>
+          ) : (
+            <div style={{ backgroundColor:'#fff7ed', border:'1px solid #fdba74', borderRadius:'14px', padding:'18px 20px', marginBottom:'24px' }}>
+              <p style={{ margin:'0 0 12px', fontSize:'0.9375rem', fontWeight:700, color:'#c2410c' }}>Referral Recommended — {cvdResult.gaps.length} care gap{cvdResult.gaps.length > 1 ? 's' : ''} identified</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+                {cvdResult.gaps.map((g, i) => (
+                  <div key={i} style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>
+                    <div style={{ width:'5px', height:'5px', borderRadius:'50%', backgroundColor:'#c2410c', flexShrink:0, marginTop:'7px' }} />
+                    <p style={{ margin:0, fontSize:'0.875rem', color:'#7c2d12', lineHeight:1.6 }}>{g.title}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
         )}
-        <button onClick={canContinue ? () => onContinue({ aspirin, statin, bpMeds }) : undefined}
+
+        {!canContinue && <p style={{ textAlign:'center', fontSize:'0.82rem', color:'#94a3b8', marginBottom:'12px' }}>Answer all five questions to continue</p>}
+        <button onClick={canContinue ? () => onContinue({ lastSeen, aspirin, statin, bpMeds, symptoms }) : undefined}
           onMouseOver={() => canContinue && setContHov(true)} onMouseOut={() => setContHov(false)} disabled={!canContinue}
           style={{ width:'100%', padding:'18px 24px', border:'none', borderRadius:'12px', backgroundColor: canContinue ? (contHov ? '#1558a8' : BLUE) : '#e2e8f0', color: canContinue ? '#ffffff' : '#94a3b8', fontSize:'1.0625rem', fontWeight:700, cursor: canContinue ? 'pointer' : 'not-allowed', boxShadow: canContinue ? '0 4px 16px rgba(29,111,206,0.3)' : 'none', fontFamily:font }}>
           Continue to Summary →
@@ -1612,7 +1717,7 @@ export default function App() {
       );
 
     case 'known-cvd-meds':
-      return <KnownCVDMedsScreen onBack={() => setScreen('framingham-pre')} onContinue={m => { setCvdMeds(m); setScreen('results'); }} />;
+      return <CVDCareGapScreen onBack={() => setScreen('framingham-pre')} onContinue={m => { setCvdMeds(m); setScreen('results'); }} />;
 
     case 'framingham':
       return <FraminghamForm findriscScore={findriscScore} onBack={() => setScreen('framingham-pre')} onResult={r => { setFraminghamResult(r); setScreen('framingham-result'); }} />;
