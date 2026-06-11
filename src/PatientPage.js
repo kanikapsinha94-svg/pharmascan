@@ -123,14 +123,6 @@ function findriscProb(score) {
   return '50%';
 }
 
-function motivationLine(label) {
-  if (label === 'Low Risk')
-    return { emoji:'🎉', text:'Well done for getting screened — your results look great. Keep up the healthy habits!', color:'#15803d', bg:'#f0fdf4' };
-  if (label === 'High Risk')
-    return { emoji:'📚', text:'You did the right thing by getting screened today. Early screening saves lives. Please speak with a doctor soon and explore the Lifestyle Support tab while you wait.', color:'#b45309', bg:'#fffbeb' };
-  return { emoji:'🍎', text:'You did the right thing by getting screened today. Early screening saves lives. Check the Lifestyle Support tab for steps you can take to reduce your risk.', color:'#b45309', bg:'#fffbeb' };
-}
-
 function ResultsTab({ data }) {
   const fr  = findriscMeta(data.findrisc_score);
   const cv  = cvdMeta(data.cvd_risk);
@@ -139,15 +131,41 @@ function ResultsTab({ data }) {
   const cvdResult = data.cvd_result || null;
   const screenDate = new Date(data.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
 
-  const frMot = fr ? motivationLine(fr.label) : null;
-  const cvMot = (cv && !data.known_cvd) ? motivationLine(cv.label) : null;
-  const suppressCvdMot = frMot && cvMot && frMot.emoji === cvMot.emoji;
+  // Single combined motivational message — severity based on worst result
+  const rank = lbl => ({ 'Slightly Elevated':1, 'Moderate Risk':2, 'Elevated Risk':3, 'High Risk':4 }[lbl] || 0);
+  const worstRank = Math.max(fr ? rank(fr.label) : 0, (cv && !data.known_cvd) ? rank(cv.label) : 0);
+  const combinedMot = worstRank === 0
+    ? { emoji:'🎉', text:'Great news — and well done for taking the time to get screened. Keep up the healthy habits and rescreen in 1–2 years.', color:'#15803d', bg:'#f0fdf4' }
+    : worstRank <= 2
+    ? { emoji:'🍎', text:'Well done for getting screened today — this is exactly the right thing to do. Early awareness gives you the chance to make changes that can significantly reduce your risk.', color:'#b45309', bg:'#fffbeb' }
+    : { emoji:'📚', text:'Getting screened today was an important step. Early detection saves lives. Please speak with a doctor — and know that this risk can be significantly reduced with the right support.', color:'#b45309', bg:'#fffbeb' };
+
+  // Adaptive stat box text per risk level
+  const frStatText = fr
+    ? fr.label === 'Low Risk'
+      ? 'Your diabetes risk is low. Keeping active and eating well will help you stay this way.'
+      : fr.label === 'Slightly Elevated'
+      ? 'As per this screening, you have approximately a 4% chance of developing Type 2 diabetes in the next 10 years. Small lifestyle changes now can make a real difference.'
+      : fr.label === 'Moderate Risk'
+      ? 'As per this screening, you have approximately a 17% chance of developing Type 2 diabetes in the next 10 years. Speaking with a doctor about prevention is a good idea.'
+      : `As per this screening, you have approximately a ${findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with lifestyle changes.`
+    : null;
+
+  const cvStatText = cv
+    ? cv.label === 'Low Risk'
+      ? 'Your 10-year heart risk is low. Maintaining a healthy lifestyle will help keep it that way.'
+      : cv.label === 'Moderate Risk'
+      ? `As per this screening, you have a ${data.cvd_risk}% chance of a heart attack or stroke in the next 10 years. Your doctor can advise on steps to reduce this.`
+      : `As per this screening, you have a ${data.cvd_risk}% chance of a heart attack or stroke in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with the right medical and lifestyle support.`
+    : null;
+
+  const showScoreCards = fr || (cv && !data.known_cvd);
 
   return (
     <div style={{ padding:'20px 16px' }}>
       <p style={{ margin:'0 0 20px', fontSize:'0.8rem', color:'#94a3b8' }}>Screened {screenDate}</p>
 
-      {fr && frMot && (
+      {fr && frStatText && (
         <Card>
           <SectionTitle
             icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={BLUE} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>}
@@ -163,18 +181,13 @@ function ResultsTab({ data }) {
               <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{fr.headline}</p>
             </div>
           </div>
-          <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
-            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:fr.color, lineHeight:1.65 }}>
-              As per this screening, you have approximately a {findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years. Speaking with a doctor about prevention is recommended. This risk can be significantly reduced with lifestyle changes.
-            </p>
-          </div>
-          <div style={{ backgroundColor:frMot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
-            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:frMot.color, lineHeight:1.5 }}>{frMot.emoji} {frMot.text}</p>
+          <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
+            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:fr.color, lineHeight:1.65 }}>{frStatText}</p>
           </div>
         </Card>
       )}
 
-      {cv && !data.known_cvd && cvMot && (
+      {cv && !data.known_cvd && cvStatText && (
         <Card>
           <SectionTitle
             icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2 9.5 2 5.5A3.5 3.5 0 018 3a3.5 3.5 0 016 2c0 4-6 8.5-6 8.5z" stroke="#e11d48" strokeWidth="1.5" fill="none"/></svg>}
@@ -190,16 +203,9 @@ function ResultsTab({ data }) {
               <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{cv.headline}</p>
             </div>
           </div>
-          <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', marginBottom: suppressCvdMot ? 0 : '12px', textAlign:'center' }}>
-            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:cv.color, lineHeight:1.65 }}>
-              As per this screening, you have a {data.cvd_risk}% chance of having a heart attack or stroke in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with the right medical and lifestyle support.
-            </p>
+          <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
+            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:cv.color, lineHeight:1.65 }}>{cvStatText}</p>
           </div>
-          {!suppressCvdMot && (
-            <div style={{ backgroundColor:cvMot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:cvMot.color, lineHeight:1.5 }}>{cvMot.emoji} {cvMot.text}</p>
-            </div>
-          )}
         </Card>
       )}
 
@@ -270,6 +276,14 @@ function ResultsTab({ data }) {
             </p>
           )}
         </Card>
+      )}
+
+      {showScoreCards && (
+        <div style={{ backgroundColor:combinedMot.bg, borderRadius:'12px', padding:'16px', textAlign:'center', marginBottom:'12px' }}>
+          <p style={{ margin:0, fontSize:'0.9rem', fontWeight:500, color:combinedMot.color, lineHeight:1.65 }}>
+            {combinedMot.emoji} {combinedMot.text}
+          </p>
+        </div>
       )}
 
       <p style={{ margin:'8px 0 0', fontSize:'0.76rem', color:'#94a3b8', lineHeight:1.65, textAlign:'center' }}>
