@@ -125,10 +125,10 @@ function findriscProb(score) {
 
 function motivationLine(label) {
   if (label === 'Low Risk')
-    return { emoji:'🎉', text:'Well done for getting screened — your results look great. Keep up the healthy habits!', color:'#15803d' };
+    return { emoji:'🎉', text:'Well done for getting screened — your results look great. Keep up the healthy habits!', color:'#15803d', bg:'#f0fdf4' };
   if (label === 'High Risk')
-    return { emoji:'📚', text:'Getting screened today was an important first step. Please speak with a doctor soon — and explore the Learn tab while you wait.', color:'#b45309' };
-  return { emoji:'🍎', text:'You did the right thing by getting screened. Check the Learn tab for steps you can take to reduce your risk.', color:'#b45309' };
+    return { emoji:'📚', text:'Getting screened today was an important first step. Please speak with a doctor soon — and explore the Lifestyle Support tab while you wait.', color:'#b45309', bg:'#fffbeb' };
+  return { emoji:'🍎', text:'You did the right thing by getting screened. Check the Lifestyle Support tab for steps you can take to reduce your risk.', color:'#b45309', bg:'#fffbeb' };
 }
 
 function ResultsTab({ data }) {
@@ -151,6 +151,7 @@ function ResultsTab({ data }) {
               icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={BLUE} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>}
               title="Diabetes Risk"
             />
+            <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Type 2 diabetes develops when the body can't use insulin properly. The good news is that lifestyle changes can reduce your risk by up to 58%.</p>
             <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
               <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:fr.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <span style={{ fontSize:'1.375rem', fontWeight:900, color:fr.color }}>{data.findrisc_score}</span>
@@ -161,14 +162,13 @@ function ResultsTab({ data }) {
               </div>
             </div>
             <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'1rem', fontWeight:700, color:fr.color, lineHeight:1.5 }}>
+              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:fr.color, lineHeight:1.5 }}>
                 Approximately {findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years
               </p>
             </div>
             <p style={{ margin:'0 0 12px', fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{fr.body}</p>
-            <div style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>
-              <span style={{ fontSize:'1.1rem', flexShrink:0 }}>{mot.emoji}</span>
-              <p style={{ margin:0, fontSize:'0.8125rem', color:mot.color, lineHeight:1.65 }}>{mot.text}</p>
+            <div style={{ backgroundColor:mot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
+              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:mot.color, lineHeight:1.5 }}>{mot.emoji} {mot.text}</p>
             </div>
           </Card>
         );
@@ -182,6 +182,7 @@ function ResultsTab({ data }) {
               icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2 9.5 2 5.5A3.5 3.5 0 018 3a3.5 3.5 0 016 2c0 4-6 8.5-6 8.5z" stroke="#e11d48" strokeWidth="1.5" fill="none"/></svg>}
               title="Heart Risk — next 10 years"
             />
+            <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Your Framingham score estimates your chance of a major heart event — heart attack or stroke — in the next 10 years. Many risk factors can be improved with the right support.</p>
             <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
               <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:cv.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <span style={{ fontSize:'1.125rem', fontWeight:900, color:cv.color }}>{data.cvd_risk}%</span>
@@ -192,14 +193,13 @@ function ResultsTab({ data }) {
               </div>
             </div>
             <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'1rem', fontWeight:700, color:cv.color, lineHeight:1.5 }}>
+              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:cv.color, lineHeight:1.5 }}>
                 You have a {data.cvd_risk}% chance of a heart attack or stroke in the next 10 years
               </p>
             </div>
             <p style={{ margin:'0 0 12px', fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{cv.body}</p>
-            <div style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>
-              <span style={{ fontSize:'1.1rem', flexShrink:0 }}>{mot.emoji}</span>
-              <p style={{ margin:0, fontSize:'0.8125rem', color:mot.color, lineHeight:1.65 }}>{mot.text}</p>
+            <div style={{ backgroundColor:mot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
+              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:mot.color, lineHeight:1.5 }}>{mot.emoji} {mot.text}</p>
             </div>
           </Card>
         );
@@ -281,25 +281,19 @@ function ResultsTab({ data }) {
   );
 }
 
-function LearnTab({ data }) {
+function LifestyleSupportTab({ data }) {
   const showDiabetes = (data.findrisc_score !== null && data.findrisc_score >= 12) || !!data.known_diabetic;
   const showHeart    = (data.cvd_risk !== null && data.cvd_risk >= 10) || (data.systolic_bp !== null && data.systolic_bp >= 140) || !!data.known_cvd;
-  const showHealthy  = !showDiabetes && !showHeart;
 
   return (
     <div style={{ padding:'20px 16px' }}>
       <p style={{ margin:'0 0 20px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.65 }}>
-        Practical steps to protect your health, based on your results.
+        Simple steps to eat well and move more.
       </p>
 
       {showDiabetes && (
         <>
-          <Accordion title="Understanding your diabetes risk" icon="🩺" defaultOpen={true}>
-            <p style={{ margin:'16px 0', fontSize:'0.875rem', color:'#334155', lineHeight:1.8 }}>
-              Type 2 diabetes develops when the body cannot use insulin properly. In the UAE, 64% of people living with diabetes don't know they have it. The encouraging news: losing just 5–7% of body weight and moving more can reduce diabetes risk by up to 58%.
-            </p>
-          </Accordion>
-          <Accordion title="What to eat" icon="🥗" defaultOpen={false}>
+          <Accordion title="What to eat" icon="🥗" defaultOpen={true}>
             <PlateGraphic variant="diabetes" />
             {[
               ['Fill half your plate with vegetables', 'Non-starchy vegetables at every meal.'],
@@ -341,12 +335,7 @@ function LearnTab({ data }) {
 
       {showHeart && (
         <>
-          <Accordion title="Understanding your heart risk" icon="❤️" defaultOpen={true}>
-            <p style={{ margin:'16px 0', fontSize:'0.875rem', color:'#334155', lineHeight:1.8 }}>
-              Cardiovascular disease is the leading cause of death in the UAE. High blood pressure is often called the "silent killer" because it causes no symptoms but steadily damages the heart, arteries, and kidneys over time. Your Framingham score estimates the chance of a major heart event — heart attack or stroke — over the next 10 years.
-            </p>
-          </Accordion>
-          <Accordion title="Heart-healthy eating" icon="🥑" defaultOpen={false}>
+          <Accordion title="Heart-healthy eating" icon="🥑" defaultOpen={!showDiabetes}>
             <PlateGraphic variant="heart" />
             {[
               ['Reduce salt', 'Avoid adding salt at the table. Choose low-sodium options where possible.'],
@@ -384,29 +373,6 @@ function LearnTab({ data }) {
             </div>
           </Accordion>
         </>
-      )}
-
-      {showHealthy && (
-        <Accordion title="Staying healthy — your results look good" icon="✨" defaultOpen={true}>
-          <p style={{ margin:'16px 0', fontSize:'0.875rem', color:'#334155', lineHeight:1.8 }}>
-            Your results today suggest a lower risk of diabetes and cardiovascular disease. The best time to protect your health is before problems develop.
-          </p>
-          {[
-            ['Stay active', '150 minutes of moderate exercise per week — walking, swimming, cycling.'],
-            ['Eat well', 'Plenty of vegetables, wholegrains, and lean protein.'],
-            ['Maintain a healthy weight', 'Even modest weight loss reduces future disease risk significantly.'],
-            ['Get regular check-ups', 'Blood pressure and blood sugar check every 1–2 years.'],
-          ].map(([title, desc], i) => (
-            <InfoRow key={i}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#dcfce7"/><path d="M5 8l2 2 4-4" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              <div>
-                <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
-                <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
-              </div>
-            </InfoRow>
-          ))}
-          <LearnLink href="https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64/">NHS activity guidelines</LearnLink>
-        </Accordion>
       )}
     </div>
   );
@@ -597,25 +563,25 @@ function TabIcon({ id, active }) {
       <path d="M6 6h6M6 9h6M6 12h4" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
   );
-  if (id === 'learn') return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M9 3L2 7l7 4 7-4-7-4z" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/>
-      <path d="M5 8.5v4.5a7 3 0 008 0V8.5" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
-    </svg>
-  );
   if (id === 'next') return (
     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
       <circle cx="9" cy="9" r="7" stroke={color} strokeWidth="1.5"/>
       <path d="M6 9l2 2 4-4" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
+  if (id === 'lifestyle') return (
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M9 3L2 7l7 4 7-4-7-4z" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/>
+      <path d="M5 8.5v4.5a7 3 0 008 0V8.5" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
   return null;
 }
 
 const TABS = [
-  { id:'results', label:'Results'    },
-  { id:'learn',   label:'Learn'      },
-  { id:'next',    label:'Next Steps' },
+  { id:'results',   label:'Results'           },
+  { id:'next',      label:'Next Steps'        },
+  { id:'lifestyle', label:'Lifestyle Support' },
 ];
 
 export default function PatientPage({ id }) {
@@ -674,9 +640,9 @@ export default function PatientPage({ id }) {
         </div>
 
         <div style={{ flex:1 }}>
-          {activeTab === 'results' && <ResultsTab data={data} />}
-          {activeTab === 'learn'   && <LearnTab   data={data} />}
-          {activeTab === 'next'    && <NextStepsTab data={data} id={id} />}
+          {activeTab === 'results'   && <ResultsTab data={data} />}
+          {activeTab === 'next'      && <NextStepsTab data={data} id={id} />}
+          {activeTab === 'lifestyle' && <LifestyleSupportTab data={data} />}
         </div>
 
         <div style={{ backgroundColor:'#fff', borderTop:'1px solid #e2e8f0', padding:'16px', textAlign:'center' }}>
