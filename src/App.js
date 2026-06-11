@@ -1,5 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './App.css';
+import { QRCodeSVG } from 'qrcode.react';
+import { supabase } from './supabase';
+import PatientPage from './PatientPage';
+
+function generateId() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let id = '';
+  for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
+}
 
 // ─── FINDRISC data ────────────────────────────────────────────────────────────
 
@@ -748,6 +758,17 @@ function FraminghamResult({ result, knownDiabetic, onBack, onContinue }) {
           )}
         </div>
 
+        {result.sbp >= 140 && (
+          <div style={{ display:'flex', gap:'10px', alignItems:'flex-start', backgroundColor:'#fefce8', border:'1px solid #fde047', borderRadius:'12px', padding:'14px 16px', marginBottom:'20px' }}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="#ca8a04" style={{ flexShrink:0, marginTop:'1px' }}>
+              <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd"/>
+            </svg>
+            <p style={{ margin:0, fontSize:'0.8rem', color:'#713f12', lineHeight:1.6 }}>
+              <strong>Elevated Blood Pressure Noted:</strong> This patient's systolic BP reading of <strong>{result.sbp} mmHg</strong> is above the normal range (below 120 mmHg is optimal, 120–139 mmHg is elevated, 140 mmHg and above is high). Blood pressure review is recommended.
+            </p>
+          </div>
+        )}
+
         {knownDiabetic && (
           <div style={{ display:'flex', gap:'10px', alignItems:'flex-start', backgroundColor:'#fffbeb', border:'1px solid #fcd34d', borderRadius:'12px', padding:'14px 16px', marginBottom:'20px' }}>
             <svg width="16" height="16" viewBox="0 0 20 20" fill="#b45309" style={{ flexShrink:0, marginTop:'1px' }}>
@@ -794,7 +815,35 @@ const LIFESTYLE_ADVICE = [
   'Rescreen for diabetes and cardiovascular risk in 1–2 years.',
 ];
 
-function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, onStartNew, onGenerateReferral }) {
+function PatientCard({ patientId, saveData }) {
+  const qrUrl = `${window.location.origin}/patient/${patientId}`;
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.from('patient_records').upsert({ id: patientId, ...saveData }, { onConflict: 'id' })
+      .then(({ error }) => { if (error) console.warn('PharmaScan: patient record save failed', error); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  return (
+    <div style={{ backgroundColor:'#eff6ff', borderRadius:'16px', padding:'24px', border:'1px solid #bfdbfe', textAlign:'center', marginTop:'20px' }}>
+      <p style={{ margin:'0 0 4px', fontSize:'0.875rem', fontWeight:700, color:BLUE }}>Patient Health Information</p>
+      <p style={{ margin:'0 0 16px', fontSize:'0.8rem', color:'#64748b' }}>Share this QR code with your patient</p>
+      <div style={{ display:'inline-block', backgroundColor:'#fff', padding:'12px', borderRadius:'12px', boxShadow:'0 2px 8px rgba(15,23,42,0.08)', marginBottom:'14px' }}>
+        <QRCodeSVG value={qrUrl} size={148} />
+      </div>
+      <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#334155', lineHeight:1.65 }}>
+        Scan this QR code to get your personalised health information on your phone.
+      </p>
+      <div style={{ display:'inline-flex', alignItems:'center', gap:'8px', padding:'8px 16px', backgroundColor:'#fff', borderRadius:'10px', border:'1px solid #bfdbfe' }}>
+        <span style={{ fontSize:'0.72rem', color:'#94a3b8', letterSpacing:'0.04em', textTransform:'uppercase' }}>ID</span>
+        <span style={{ fontSize:'0.9375rem', fontWeight:700, color:BLUE, fontFamily:'monospace', letterSpacing:'0.12em' }}>{patientId}</span>
+      </div>
+    </div>
+  );
+}
+
+function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabetesControl, knownCVD, cvdMeds, patientId, onStartNew, onGenerateReferral }) {
   const [refHov, setRefHov] = useState(false);
   const [newHov, setNewHov] = useState(false);
 
@@ -806,13 +855,28 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
   const framinghamRisk = !knownCVD && framinghamResult ? framinghamResult.risk : null;
   const estimated      = !knownCVD && framinghamResult ? framinghamResult.estimated : false;
   const sex            = !knownCVD && framinghamResult ? framinghamResult.sex : null;
+  const sbp            = !knownCVD && framinghamResult ? framinghamResult.sbp : null;
+
+  // Patient record payload for Supabase / QR page
+  const patientSaveData = {
+    findrisc_score: findriscScore,
+    findrisc_level: findriscInfo ? findriscInfo.level : null,
+    cvd_risk:       framinghamRisk,
+    systolic_bp:    sbp,
+    known_diabetic: knownDiabetic,
+    known_cvd:      knownCVD,
+    diabetes_gaps:  careGaps,
+    cvd_result:     knownCVD && cvdMeds ? getCVDCareGaps(cvdMeds) : null,
+    hba1c_display:  diabetesControl ? diabetesControl.hba1cDisplay || null : null,
+  };
   const cardioInfo     = framinghamRisk !== null ? getCardioRiskInfo(framinghamRisk) : { level:'High Risk', color:'#b91c1c', bannerBg:'#fee2e2', bannerBorder:'#fca5a5', bg:'#fee2e2', border:'#fca5a5' };
 
   // Referral logic
   const cvdResult        = knownCVD && cvdMeds ? getCVDCareGaps(cvdMeds) : null;
   const diabetesReferral = knownDiabetic ? (careGaps && careGaps.length > 0) : (findriscScore !== null && findriscScore >= 15);
   const cvdReferral      = knownCVD ? (cvdResult && (cvdResult.urgent || cvdResult.gaps.length > 0)) : (framinghamRisk !== null && framinghamRisk >= 10);
-  const referralNeeded   = diabetesReferral || cvdReferral;
+  const bpReferral       = !knownCVD && sbp !== null && sbp >= 140;
+  const referralNeeded   = diabetesReferral || cvdReferral || bpReferral;
 
   const referralReasons = [];
   if (knownDiabetic && careGaps && careGaps.length > 0)
@@ -829,6 +893,8 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
       referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (High Risk) — refer for cardiovascular risk management.`);
     else if (framinghamRisk !== null && framinghamRisk >= 10)
       referralReasons.push(`10-year cardiovascular risk of ${framinghamRisk}% (Intermediate Risk) — refer for cardiovascular risk factor management.`);
+    if (bpReferral)
+      referralReasons.push(`Elevated systolic BP of ${sbp} mmHg recorded — blood pressure review and clinical assessment recommended.`);
   }
 
   // Narrative text
@@ -989,6 +1055,8 @@ function ResultsSummary({ findriscScore, framinghamResult, knownDiabetic, diabet
           style={{ width:'100%', padding:'16px 24px', border:`2px solid ${newHov ? '#16a34a' : '#e2e8f0'}`, borderRadius:'12px', backgroundColor: newHov ? '#f0fdf4' : '#ffffff', color: newHov ? '#15803d' : '#475569', fontSize:'1rem', fontWeight:600, cursor:'pointer', transition:'border-color 140ms ease, background-color 140ms ease, color 140ms ease', fontFamily:font }}>
           Start New Screening
         </button>
+
+        {patientId && <PatientCard patientId={patientId} saveData={patientSaveData} />}
       </div>
     </div>
   );
@@ -1029,12 +1097,14 @@ function getLetterRecommendations({ findriscScore, framinghamRisk, estimated, sb
       recs.push('Reinforcement of cardiovascular risk-reducing lifestyle modifications.');
     } else if (framinghamRisk >= 10) {
       if (estimated) recs.push('Fasting lipid profile (total cholesterol, LDL-C, HDL-C, triglycerides) — cholesterol values were unavailable at the time of screening and are needed to guide management.');
-      if (bpTreated || (sbp !== null && sbp >= 140)) recs.push('Review of blood pressure control and treatment optimisation if indicated.');
+      if (bpTreated && !(sbp !== null && sbp >= 140)) recs.push('Review of blood pressure control and treatment optimisation if indicated.');
       if (!medicationReview || !medicationReview.onStatin)
         recs.push('Discussion of statin therapy for cardiovascular risk reduction — patient is not currently taking a statin.');
       recs.push('Lifestyle counselling focused on diet, physical activity, and smoking cessation where applicable.');
     }
   }
+  if (!knownCVD && sbp !== null && sbp >= 140)
+    recs.push(`Blood pressure review recommended — a systolic BP of ${sbp} mmHg was recorded at screening. A reading of 140 mmHg or above warrants clinical assessment and management.`);
   return recs;
 }
 
@@ -1718,10 +1788,11 @@ function MedicationReviewScreen({ framinghamRisk, onBack, onContinue }) {
 
 // ─── App router ───────────────────────────────────────────────────────────────
 
-export default function App() {
+function App() {
   const [screen,            setScreen]            = useState('setup');
   const [pharmacyName,      setPharmacyName]      = useState('');
   const [pharmacistName,    setPharmacistName]    = useState('');
+  const [patientId,         setPatientId]         = useState(() => generateId());
   const [findriscScore,     setFindriscScore]      = useState(null);
   const [framinghamResult,  setFraminghamResult]   = useState(null);
   const [knownDiabetic,     setKnownDiabetic]      = useState(false);
@@ -1735,6 +1806,7 @@ export default function App() {
     setKnownDiabetic(false); setDiabetesControl(null);
     setKnownCVD(false); setCvdMeds(null);
     setMedicationReview(null);
+    setPatientId(generateId());
     setScreen('home');
   };
 
@@ -1787,6 +1859,7 @@ export default function App() {
       return (
         <ResultsSummary
           {...sharedResultsProps}
+          patientId={patientId}
           onStartNew={resetAll}
           onGenerateReferral={() => setScreen('referral')}
         />
@@ -1816,4 +1889,13 @@ export default function App() {
     default:
       return <HomeScreen onStart={() => setScreen('pre-screen')} />;
   }
+}
+
+export default function Root() {
+  const path = window.location.pathname;
+  if (path.startsWith('/patient/')) {
+    const id = path.slice(9).split('/')[0];
+    if (id) return <PatientPage id={id} />;
+  }
+  return <App />;
 }
