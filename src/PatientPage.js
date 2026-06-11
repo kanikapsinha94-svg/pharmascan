@@ -115,6 +115,22 @@ function PlateGraphic({ variant }) {
   );
 }
 
+function findriscProb(score) {
+  if (score <= 6)  return 'less than 1%';
+  if (score <= 11) return '4%';
+  if (score <= 14) return '17%';
+  if (score <= 20) return '33%';
+  return '50%';
+}
+
+function motivationLine(label) {
+  if (label === 'Low Risk')
+    return { emoji:'🎉', text:'Well done for getting screened — your results look great. Keep up the healthy habits!', color:'#15803d' };
+  if (label === 'High Risk')
+    return { emoji:'📚', text:'Getting screened today was an important first step. Please speak with a doctor soon — and explore the Learn tab while you wait.', color:'#b45309' };
+  return { emoji:'🍎', text:'You did the right thing by getting screened. Check the Learn tab for steps you can take to reduce your risk.', color:'#b45309' };
+}
+
 function ResultsTab({ data }) {
   const fr  = findriscMeta(data.findrisc_score);
   const cv  = cvdMeta(data.cvd_risk);
@@ -127,43 +143,67 @@ function ResultsTab({ data }) {
     <div style={{ padding:'20px 16px' }}>
       <p style={{ margin:'0 0 20px', fontSize:'0.8rem', color:'#94a3b8' }}>Screened {screenDate}</p>
 
-      {fr && (
-        <Card>
-          <SectionTitle
-            icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={BLUE} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>}
-            title="Diabetes Risk"
-          />
-          <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'12px' }}>
-            <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:fr.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <span style={{ fontSize:'1.375rem', fontWeight:900, color:fr.color }}>{data.findrisc_score}</span>
+      {fr && (() => {
+        const mot = motivationLine(fr.label);
+        return (
+          <Card>
+            <SectionTitle
+              icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={BLUE} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>}
+              title="Diabetes Risk"
+            />
+            <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
+              <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:fr.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:'1.375rem', fontWeight:900, color:fr.color }}>{data.findrisc_score}</span>
+              </div>
+              <div>
+                <StatusBadge label={fr.label} color={fr.color} bg={fr.bg} />
+                <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{fr.headline}</p>
+              </div>
             </div>
-            <div>
-              <StatusBadge label={fr.label} color={fr.color} bg={fr.bg} />
-              <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{fr.headline}</p>
+            <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
+              <p style={{ margin:0, fontSize:'1rem', fontWeight:700, color:fr.color, lineHeight:1.5 }}>
+                Approximately {findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years
+              </p>
             </div>
-          </div>
-          <p style={{ margin:0, fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{fr.body}</p>
-        </Card>
-      )}
+            <p style={{ margin:'0 0 12px', fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{fr.body}</p>
+            <div style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>
+              <span style={{ fontSize:'1.1rem', flexShrink:0 }}>{mot.emoji}</span>
+              <p style={{ margin:0, fontSize:'0.8125rem', color:mot.color, lineHeight:1.65 }}>{mot.text}</p>
+            </div>
+          </Card>
+        );
+      })()}
 
-      {cv && !data.known_cvd && (
-        <Card>
-          <SectionTitle
-            icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2 9.5 2 5.5A3.5 3.5 0 018 3a3.5 3.5 0 016 2c0 4-6 8.5-6 8.5z" stroke="#e11d48" strokeWidth="1.5" fill="none"/></svg>}
-            title="Heart Risk — next 10 years"
-          />
-          <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'12px' }}>
-            <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:cv.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <span style={{ fontSize:'1.125rem', fontWeight:900, color:cv.color }}>{data.cvd_risk}%</span>
+      {cv && !data.known_cvd && (() => {
+        const mot = motivationLine(cv.label);
+        return (
+          <Card>
+            <SectionTitle
+              icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2 9.5 2 5.5A3.5 3.5 0 018 3a3.5 3.5 0 016 2c0 4-6 8.5-6 8.5z" stroke="#e11d48" strokeWidth="1.5" fill="none"/></svg>}
+              title="Heart Risk — next 10 years"
+            />
+            <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
+              <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:cv.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:'1.125rem', fontWeight:900, color:cv.color }}>{data.cvd_risk}%</span>
+              </div>
+              <div>
+                <StatusBadge label={cv.label} color={cv.color} bg={cv.bg} />
+                <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{cv.headline}</p>
+              </div>
             </div>
-            <div>
-              <StatusBadge label={cv.label} color={cv.color} bg={cv.bg} />
-              <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{cv.headline}</p>
+            <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
+              <p style={{ margin:0, fontSize:'1rem', fontWeight:700, color:cv.color, lineHeight:1.5 }}>
+                You have a {data.cvd_risk}% chance of a heart attack or stroke in the next 10 years
+              </p>
             </div>
-          </div>
-          <p style={{ margin:0, fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{cv.body}</p>
-        </Card>
-      )}
+            <p style={{ margin:'0 0 12px', fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{cv.body}</p>
+            <div style={{ display:'flex', gap:'8px', alignItems:'flex-start' }}>
+              <span style={{ fontSize:'1.1rem', flexShrink:0 }}>{mot.emoji}</span>
+              <p style={{ margin:0, fontSize:'0.8125rem', color:mot.color, lineHeight:1.65 }}>{mot.text}</p>
+            </div>
+          </Card>
+        );
+      })()}
 
       {data.known_cvd && cvdResult && (
         <Card>
