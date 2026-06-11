@@ -280,9 +280,10 @@ function ResultsTab({ data }) {
 }
 
 function LifestyleSupportTab({ data }) {
-  const showDiabetes = (data.findrisc_score !== null && data.findrisc_score >= 12) || !!data.known_diabetic;
-  const showHeart    = (data.cvd_risk !== null && data.cvd_risk >= 10) || (data.systolic_bp !== null && data.systolic_bp >= 140) || !!data.known_cvd;
+  const showDiabetes = data.findrisc_score !== null || !!data.known_diabetic;
+  const showHeart    = data.cvd_risk !== null || !!data.known_cvd;
   const both         = showDiabetes && showHeart;
+  const showGeneral  = !showDiabetes && !showHeart;
 
   const greenTick = <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#dcfce7"/><path d="M5 8l2 2 4-4" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
   const blueClock = <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#dbeafe"/><path d="M8 4v4l3 3" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>;
@@ -409,6 +410,33 @@ function LifestyleSupportTab({ data }) {
             {exerciseTips.map(([title, desc], i) => (
               <InfoRow key={i}>
                 {redTick}
+                <div>
+                  <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
+                  <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
+                </div>
+              </InfoRow>
+            ))}
+            {nhsLinks}
+          </Accordion>
+        </>
+      ) : showGeneral ? (
+        <>
+          <Accordion title="Healthy eating" icon="🥗" defaultOpen={true}>
+            <PlateGraphic variant="diabetes" />
+            {diabetesFoodTips.map(([title, desc], i) => (
+              <InfoRow key={i}>
+                {greenTick}
+                <div>
+                  <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
+                  <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
+                </div>
+              </InfoRow>
+            ))}
+          </Accordion>
+          <Accordion title="Staying active" icon="🏃" defaultOpen={false}>
+            {exerciseTips.map(([title, desc], i) => (
+              <InfoRow key={i}>
+                {blueClock}
                 <div>
                   <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
                   <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
