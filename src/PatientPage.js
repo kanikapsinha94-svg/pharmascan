@@ -139,69 +139,69 @@ function ResultsTab({ data }) {
   const cvdResult = data.cvd_result || null;
   const screenDate = new Date(data.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'long', year:'numeric' });
 
+  const frMot = fr ? motivationLine(fr.label) : null;
+  const cvMot = (cv && !data.known_cvd) ? motivationLine(cv.label) : null;
+  const suppressCvdMot = frMot && cvMot && frMot.emoji === cvMot.emoji;
+
   return (
     <div style={{ padding:'20px 16px' }}>
       <p style={{ margin:'0 0 20px', fontSize:'0.8rem', color:'#94a3b8' }}>Screened {screenDate}</p>
 
-      {fr && (() => {
-        const mot = motivationLine(fr.label);
-        return (
-          <Card>
-            <SectionTitle
-              icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={BLUE} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>}
-              title="Diabetes Risk"
-            />
-            <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Type 2 diabetes develops when the body can't use insulin properly. The good news is that lifestyle changes can reduce your risk by up to 58%.</p>
-            <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
-              <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:fr.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:'1.375rem', fontWeight:900, color:fr.color }}>{data.findrisc_score}</span>
-              </div>
-              <div>
-                <StatusBadge label={fr.label} color={fr.color} bg={fr.bg} />
-                <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{fr.headline}</p>
-              </div>
+      {fr && frMot && (
+        <Card>
+          <SectionTitle
+            icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={BLUE} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>}
+            title="Diabetes Risk"
+          />
+          <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Type 2 diabetes develops when the body can't use insulin properly. The good news is that lifestyle changes can reduce your risk by up to 58%.</p>
+          <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
+            <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:fr.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <span style={{ fontSize:'1.375rem', fontWeight:900, color:fr.color }}>{data.findrisc_score}</span>
             </div>
-            <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:fr.color, lineHeight:1.65 }}>
-                As per this screening, you have approximately a {findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years. Speaking with a doctor about prevention is recommended. This risk can be significantly reduced with lifestyle changes.
-              </p>
+            <div>
+              <StatusBadge label={fr.label} color={fr.color} bg={fr.bg} />
+              <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{fr.headline}</p>
             </div>
-            <div style={{ backgroundColor:mot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:mot.color, lineHeight:1.5 }}>{mot.emoji} {mot.text}</p>
-            </div>
-          </Card>
-        );
-      })()}
+          </div>
+          <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
+            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:fr.color, lineHeight:1.65 }}>
+              As per this screening, you have approximately a {findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years. Speaking with a doctor about prevention is recommended. This risk can be significantly reduced with lifestyle changes.
+            </p>
+          </div>
+          <div style={{ backgroundColor:frMot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
+            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:frMot.color, lineHeight:1.5 }}>{frMot.emoji} {frMot.text}</p>
+          </div>
+        </Card>
+      )}
 
-      {cv && !data.known_cvd && (() => {
-        const mot = motivationLine(cv.label);
-        return (
-          <Card>
-            <SectionTitle
-              icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2 9.5 2 5.5A3.5 3.5 0 018 3a3.5 3.5 0 016 2c0 4-6 8.5-6 8.5z" stroke="#e11d48" strokeWidth="1.5" fill="none"/></svg>}
-              title="Heart Risk — next 10 years"
-            />
-            <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Your Framingham score estimates your chance of a major heart event — heart attack or stroke — in the next 10 years. Many risk factors can be improved with the right support.</p>
-            <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
-              <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:cv.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:'1.125rem', fontWeight:900, color:cv.color }}>{data.cvd_risk}%</span>
-              </div>
-              <div>
-                <StatusBadge label={cv.label} color={cv.color} bg={cv.bg} />
-                <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{cv.headline}</p>
-              </div>
+      {cv && !data.known_cvd && cvMot && (
+        <Card>
+          <SectionTitle
+            icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2 9.5 2 5.5A3.5 3.5 0 018 3a3.5 3.5 0 016 2c0 4-6 8.5-6 8.5z" stroke="#e11d48" strokeWidth="1.5" fill="none"/></svg>}
+            title="Heart Risk — next 10 years"
+          />
+          <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Your Framingham score estimates your chance of a major heart event — heart attack or stroke — in the next 10 years. Many risk factors can be improved with the right support.</p>
+          <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
+            <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:cv.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <span style={{ fontSize:'1.125rem', fontWeight:900, color:cv.color }}>{data.cvd_risk}%</span>
             </div>
-            <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:cv.color, lineHeight:1.65 }}>
-                As per this screening, you have a {data.cvd_risk}% chance of having a heart attack or stroke in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with the right medical and lifestyle support.
-              </p>
+            <div>
+              <StatusBadge label={cv.label} color={cv.color} bg={cv.bg} />
+              <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{cv.headline}</p>
             </div>
-            <div style={{ backgroundColor:mot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:mot.color, lineHeight:1.5 }}>{mot.emoji} {mot.text}</p>
+          </div>
+          <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', marginBottom: suppressCvdMot ? 0 : '12px', textAlign:'center' }}>
+            <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:cv.color, lineHeight:1.65 }}>
+              As per this screening, you have a {data.cvd_risk}% chance of having a heart attack or stroke in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with the right medical and lifestyle support.
+            </p>
+          </div>
+          {!suppressCvdMot && (
+            <div style={{ backgroundColor:cvMot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
+              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:cvMot.color, lineHeight:1.5 }}>{cvMot.emoji} {cvMot.text}</p>
             </div>
-          </Card>
-        );
-      })()}
+          )}
+        </Card>
+      )}
 
       {data.known_cvd && cvdResult && (
         <Card>
