@@ -127,8 +127,8 @@ function motivationLine(label) {
   if (label === 'Low Risk')
     return { emoji:'🎉', text:'Well done for getting screened — your results look great. Keep up the healthy habits!', color:'#15803d', bg:'#f0fdf4' };
   if (label === 'High Risk')
-    return { emoji:'📚', text:'Getting screened today was an important first step. Please speak with a doctor soon — and explore the Lifestyle Support tab while you wait.', color:'#b45309', bg:'#fffbeb' };
-  return { emoji:'🍎', text:'You did the right thing by getting screened. Check the Lifestyle Support tab for steps you can take to reduce your risk.', color:'#b45309', bg:'#fffbeb' };
+    return { emoji:'📚', text:'You did the right thing by getting screened today. Early screening saves lives. Please speak with a doctor soon and explore the Lifestyle Support tab while you wait.', color:'#b45309', bg:'#fffbeb' };
+  return { emoji:'🍎', text:'You did the right thing by getting screened today. Early screening saves lives. Check the Lifestyle Support tab for steps you can take to reduce your risk.', color:'#b45309', bg:'#fffbeb' };
 }
 
 function ResultsTab({ data }) {
@@ -162,11 +162,10 @@ function ResultsTab({ data }) {
               </div>
             </div>
             <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:fr.color, lineHeight:1.5 }}>
-                Approximately {findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years
+              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:fr.color, lineHeight:1.65 }}>
+                As per this screening, you have approximately a {findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years. Speaking with a doctor about prevention is recommended. This risk can be significantly reduced with lifestyle changes.
               </p>
             </div>
-            <p style={{ margin:'0 0 12px', fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{fr.body}</p>
             <div style={{ backgroundColor:mot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
               <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:mot.color, lineHeight:1.5 }}>{mot.emoji} {mot.text}</p>
             </div>
@@ -193,11 +192,10 @@ function ResultsTab({ data }) {
               </div>
             </div>
             <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', marginBottom:'12px', textAlign:'center' }}>
-              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:cv.color, lineHeight:1.5 }}>
-                You have a {data.cvd_risk}% chance of a heart attack or stroke in the next 10 years
+              <p style={{ margin:0, fontSize:'0.9rem', fontWeight:400, color:cv.color, lineHeight:1.65 }}>
+                As per this screening, you have a {data.cvd_risk}% chance of having a heart attack or stroke in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with the right medical and lifestyle support.
               </p>
             </div>
-            <p style={{ margin:'0 0 12px', fontSize:'0.875rem', color:'#475569', lineHeight:1.7, padding:'12px 14px', backgroundColor:'#f8fafc', borderRadius:'10px' }}>{cv.body}</p>
             <div style={{ backgroundColor:mot.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
               <p style={{ margin:0, fontSize:'0.9rem', fontWeight:600, color:mot.color, lineHeight:1.5 }}>{mot.emoji} {mot.text}</p>
             </div>
@@ -284,6 +282,40 @@ function ResultsTab({ data }) {
 function LifestyleSupportTab({ data }) {
   const showDiabetes = (data.findrisc_score !== null && data.findrisc_score >= 12) || !!data.known_diabetic;
   const showHeart    = (data.cvd_risk !== null && data.cvd_risk >= 10) || (data.systolic_bp !== null && data.systolic_bp >= 140) || !!data.known_cvd;
+  const both         = showDiabetes && showHeart;
+
+  const greenTick = <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#dcfce7"/><path d="M5 8l2 2 4-4" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+  const blueClock = <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#dbeafe"/><path d="M8 4v4l3 3" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>;
+  const redTick   = <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#fee2e2"/><path d="M5 8l2 2 4-4" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+
+  const diabetesFoodTips = [
+    ['Fill half your plate with vegetables', 'Non-starchy vegetables at every meal.'],
+    ['Choose wholegrains', 'Brown rice, wholegrain bread, oats, quinoa instead of white versions.'],
+    ['Limit dates and sugary drinks', 'Aim for no more than 2–3 dates a day. Replace juices and sodas with water.'],
+    ['Choose grilled or baked over fried', 'Small change, significant impact on blood sugar.'],
+    ['Include legumes', 'Lentils, chickpeas, and beans help stabilise blood sugar.'],
+  ];
+  const heartExtraFoodTips = [
+    ['Reduce salt', 'Avoid adding salt at the table. Choose low-sodium options where possible.'],
+    ['Eat oily fish twice a week', 'Salmon, sardines, and mackerel are excellent for heart health.'],
+    ['Use olive oil', 'Replace other cooking oils with extra virgin olive oil.'],
+  ];
+  const heartOnlyFoodTips = [
+    ...heartExtraFoodTips,
+    ['Limit red and processed meat', 'Once or twice a week maximum. Avoid processed meats.'],
+    ['Eat more fruits and vegetables', 'Aim for a variety of colours across the day.'],
+  ];
+  const exerciseTips = [
+    ['30 minutes, 5 days a week', 'Brisk walking, cycling, or swimming all count. You can split it into shorter sessions.'],
+    ['Strength training twice a week', 'Lifting weights or bodyweight exercises like squats help your body use insulin more effectively.'],
+    ['Break up long sitting periods', 'Stand and move for a few minutes every 30 minutes — even at work.'],
+  ];
+  const nhsLinks = (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginTop:'4px' }}>
+      <LearnLink href="https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64/">NHS activity guidelines</LearnLink>
+      <LearnLink href="https://www.nhs.uk/live-well/exercise/strength-exercises/">NHS strength exercises</LearnLink>
+    </div>
+  );
 
   return (
     <div style={{ padding:'20px 16px' }}>
@@ -291,19 +323,27 @@ function LifestyleSupportTab({ data }) {
         Simple steps to eat well and move more.
       </p>
 
-      {showDiabetes && (
+      {both ? (
         <>
           <Accordion title="What to eat" icon="🥗" defaultOpen={true}>
             <PlateGraphic variant="diabetes" />
-            {[
-              ['Fill half your plate with vegetables', 'Non-starchy vegetables at every meal.'],
-              ['Choose wholegrains', 'Brown rice, wholegrain bread, oats, quinoa instead of white versions.'],
-              ['Limit dates and sugary drinks', 'Aim for no more than 2–3 dates a day. Replace juices and sodas with water.'],
-              ['Choose grilled or baked over fried', 'Small change, significant impact on blood sugar.'],
-              ['Include legumes', 'Lentils, chickpeas, and beans help stabilise blood sugar.'],
-            ].map(([title, desc], i) => (
+            {diabetesFoodTips.map(([title, desc], i) => (
               <InfoRow key={i}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#dcfce7"/><path d="M5 8l2 2 4-4" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {greenTick}
+                <div>
+                  <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
+                  <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
+                </div>
+              </InfoRow>
+            ))}
+            <div style={{ margin:'12px 0 8px', display:'flex', alignItems:'center', gap:'8px' }}>
+              <div style={{ flex:1, height:'1px', backgroundColor:'#f1f5f9' }} />
+              <span style={{ fontSize:'0.72rem', fontWeight:600, color:'#94a3b8', whiteSpace:'nowrap', letterSpacing:'0.04em' }}>Also good for your heart:</span>
+              <div style={{ flex:1, height:'1px', backgroundColor:'#f1f5f9' }} />
+            </div>
+            {heartExtraFoodTips.map(([title, desc], i) => (
+              <InfoRow key={i}>
+                {redTick}
                 <div>
                   <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
                   <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
@@ -312,40 +352,52 @@ function LifestyleSupportTab({ data }) {
             ))}
           </Accordion>
           <Accordion title="How to get moving" icon="🏃" defaultOpen={false}>
-            {[
-              ['30 minutes, 5 days a week', 'Brisk walking, cycling, or swimming all count. You can split it into shorter sessions.'],
-              ['Strength training twice a week', 'Lifting weights or bodyweight exercises like squats help your body use insulin more effectively.'],
-              ['Break up long sitting periods', 'Stand and move for a few minutes every 30 minutes — even at work.'],
-            ].map(([title, desc], i) => (
+            {exerciseTips.map(([title, desc], i) => (
               <InfoRow key={i}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#dbeafe"/><path d="M8 4v4l3 3" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>
+                {blueClock}
                 <div>
                   <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
                   <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
                 </div>
               </InfoRow>
             ))}
-            <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginTop:'4px' }}>
-              <LearnLink href="https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64/">NHS activity guidelines</LearnLink>
-              <LearnLink href="https://www.nhs.uk/live-well/exercise/strength-exercises/">NHS strength exercises</LearnLink>
-            </div>
+            {nhsLinks}
           </Accordion>
         </>
-      )}
-
-      {showHeart && (
+      ) : showDiabetes ? (
         <>
-          <Accordion title="Heart-healthy eating" icon="🥑" defaultOpen={!showDiabetes}>
-            <PlateGraphic variant="heart" />
-            {[
-              ['Reduce salt', 'Avoid adding salt at the table. Choose low-sodium options where possible.'],
-              ['Eat oily fish twice a week', 'Salmon, sardines, and mackerel are excellent for heart health.'],
-              ['Use olive oil', 'Replace other cooking oils with extra virgin olive oil.'],
-              ['Limit red and processed meat', 'Once or twice a week maximum. Avoid processed meats.'],
-              ['Eat more fruits and vegetables', 'Aim for a variety of colours across the day.'],
-            ].map(([title, desc], i) => (
+          <Accordion title="What to eat" icon="🥗" defaultOpen={true}>
+            <PlateGraphic variant="diabetes" />
+            {diabetesFoodTips.map(([title, desc], i) => (
               <InfoRow key={i}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#fee2e2"/><path d="M5 8l2 2 4-4" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {greenTick}
+                <div>
+                  <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
+                  <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
+                </div>
+              </InfoRow>
+            ))}
+          </Accordion>
+          <Accordion title="How to get moving" icon="🏃" defaultOpen={false}>
+            {exerciseTips.map(([title, desc], i) => (
+              <InfoRow key={i}>
+                {blueClock}
+                <div>
+                  <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
+                  <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
+                </div>
+              </InfoRow>
+            ))}
+            {nhsLinks}
+          </Accordion>
+        </>
+      ) : showHeart ? (
+        <>
+          <Accordion title="Heart-healthy eating" icon="🥑" defaultOpen={true}>
+            <PlateGraphic variant="heart" />
+            {heartOnlyFoodTips.map(([title, desc], i) => (
+              <InfoRow key={i}>
+                {redTick}
                 <div>
                   <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
                   <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
@@ -354,26 +406,19 @@ function LifestyleSupportTab({ data }) {
             ))}
           </Accordion>
           <Accordion title="Exercise for your heart" icon="🚶" defaultOpen={false}>
-            {[
-              ['150 minutes of moderate activity per week', 'Brisk walking, swimming, or cycling. Even 10-minute sessions throughout the day count.'],
-              ['Strength training twice a week', 'Resistance exercise helps lower blood pressure and improves heart health.'],
-              ['Consistency over intensity', 'Regular moderate activity is more beneficial than occasional intense bursts.'],
-            ].map(([title, desc], i) => (
+            {exerciseTips.map(([title, desc], i) => (
               <InfoRow key={i}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0, marginTop:'2px' }}><circle cx="8" cy="8" r="7" fill="#fee2e2"/><path d="M8 4v4l3 3" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                {redTick}
                 <div>
                   <p style={{ margin:'0 0 2px', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{title}</p>
                   <p style={{ margin:0, fontSize:'0.8rem', color:'#64748b', lineHeight:1.6 }}>{desc}</p>
                 </div>
               </InfoRow>
             ))}
-            <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', marginTop:'4px' }}>
-              <LearnLink href="https://www.nhs.uk/live-well/exercise/physical-activity-guidelines-for-adults-aged-19-to-64/">NHS activity guidelines</LearnLink>
-              <LearnLink href="https://www.nhs.uk/live-well/exercise/strength-exercises/">NHS strength exercises</LearnLink>
-            </div>
+            {nhsLinks}
           </Accordion>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
