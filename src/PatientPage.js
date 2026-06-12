@@ -21,14 +21,6 @@ function cvdMeta(risk) {
   return           { label:'Elevated Risk',       color:'#c2410c', bg:'#fff7ed', headline:'Your 10-year heart risk is elevated.', body:'A prompt review by a doctor is recommended.' };
 }
 
-function StatusBadge({ label, color, bg }) {
-  return (
-    <span style={{ display:'inline-block', padding:'4px 12px', borderRadius:'999px', backgroundColor:bg, color, fontSize:'0.75rem', fontWeight:700, letterSpacing:'0.02em', textTransform:'uppercase' }}>
-      {label}
-    </span>
-  );
-}
-
 function Card({ children, style }) {
   return (
     <div style={{ backgroundColor:'#fff', borderRadius:'16px', padding:'20px', marginBottom:'12px', boxShadow:'0 2px 10px rgba(15,23,42,0.06)', border:'1px solid #e2e8f0', ...style }}>
@@ -141,22 +133,18 @@ function ResultsTab({ data }) {
     : { emoji:'📚', text:'Getting screened today was an important step. Early detection saves lives. Please speak with a doctor — and know that this risk can be significantly reduced with the right support.', color:'#b45309', bg:'#fffbeb' };
 
   // Adaptive stat box text per risk level
+  const frLabelDisplay = fr ? ({ 'Low Risk':'low risk', 'Slightly Elevated':'slightly elevated risk', 'Moderate Risk':'moderate risk', 'Elevated Risk':'elevated risk', 'High Risk':'high risk' }[fr.label] || fr.label.toLowerCase()) : '';
   const frStatText = fr
     ? fr.label === 'Low Risk'
-      ? 'Your diabetes risk is low. Keeping active and eating well will help you stay this way.'
-      : fr.label === 'Slightly Elevated'
-      ? 'As per this screening, you have approximately a 4% chance of developing Type 2 diabetes in the next 10 years. Small lifestyle changes now can make a real difference.'
-      : fr.label === 'Moderate Risk'
-      ? 'As per this screening, you have approximately a 17% chance of developing Type 2 diabetes in the next 10 years. Speaking with a doctor about prevention is a good idea.'
-      : `As per this screening, you have approximately a ${findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with lifestyle changes.`
+      ? `As per this screening, you have a less than 1% chance of developing Type 2 diabetes in the next 10 years, which corresponds to a low risk. Speaking with a doctor about prevention is a good idea.`
+      : `As per this screening, you have approximately a ${findriscProb(data.findrisc_score)} chance of developing Type 2 diabetes in the next 10 years, which corresponds to a ${frLabelDisplay}. Speaking with a doctor about prevention is a good idea.`
     : null;
 
+  const cvLabelDisplay = cv ? ({ 'Low Risk':'low risk', 'Moderate Risk':'moderate risk', 'Elevated Risk':'elevated risk' }[cv.label] || cv.label.toLowerCase()) : '';
   const cvStatText = cv
     ? cv.label === 'Low Risk'
-      ? 'Your 10-year heart risk is low. Maintaining a healthy lifestyle will help keep it that way.'
-      : cv.label === 'Moderate Risk'
-      ? `As per this screening, you have a ${data.cvd_risk}% chance of a heart attack or stroke in the next 10 years. Your doctor can advise on steps to reduce this.`
-      : `As per this screening, you have a ${data.cvd_risk}% chance of a heart attack or stroke in the next 10 years. A prompt review by a doctor is recommended. This risk can be significantly reduced with the right medical and lifestyle support.`
+      ? `As per this screening, you have a ${data.cvd_risk}% chance of a heart attack or stroke in the next 10 years, which corresponds to a low risk. Maintaining a healthy lifestyle will help keep it that way.`
+      : `As per this screening, you have a ${data.cvd_risk}% chance of a heart attack or stroke in the next 10 years, which corresponds to a ${cvLabelDisplay}. A review with your doctor is recommended, and this risk can be significantly reduced with the right support.`
     : null;
 
   const showScoreCards = fr || (cv && !data.known_cvd);
@@ -171,14 +159,11 @@ function ResultsTab({ data }) {
             icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke={BLUE} strokeWidth="1.5"/><path d="M8 5v3l2 2" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round"/></svg>}
             title="Diabetes Risk"
           />
-          <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Type 2 diabetes develops when the body can't use insulin properly. The good news is that lifestyle changes can reduce your risk by up to 58%.</p>
+          <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Type 2 diabetes develops when the body can't use insulin properly. The good news is that lifestyle changes can reduce your risk by up to 58%. The FINDRISC score is a clinically validated diabetes risk assessment tool, used in over 40 countries across 6 continents.</p>
           <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
-            <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:fr.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+            <div style={{ padding:'10px 16px', borderRadius:'12px', backgroundColor:fr.bg, display:'inline-flex', alignItems:'baseline', gap:'4px', flexShrink:0 }}>
               <span style={{ fontSize:'1.375rem', fontWeight:900, color:fr.color }}>{data.findrisc_score}</span>
-            </div>
-            <div>
-              <StatusBadge label={fr.label} color={fr.color} bg={fr.bg} />
-              <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{fr.headline}</p>
+              <span style={{ fontSize:'0.8rem', fontWeight:600, color:fr.color }}>out of 26</span>
             </div>
           </div>
           <div style={{ backgroundColor:fr.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
@@ -193,14 +178,10 @@ function ResultsTab({ data }) {
             icon={<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5S2 9.5 2 5.5A3.5 3.5 0 018 3a3.5 3.5 0 016 2c0 4-6 8.5-6 8.5z" stroke="#e11d48" strokeWidth="1.5" fill="none"/></svg>}
             title="Heart Risk — next 10 years"
           />
-          <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Your Framingham score estimates your chance of a major heart event — heart attack or stroke — in the next 10 years. Many risk factors can be improved with the right support.</p>
+          <p style={{ margin:'0 0 14px', fontSize:'0.875rem', color:'#64748b', lineHeight:1.7 }}>Your Framingham score estimates your chance of a major heart event — heart attack or stroke — in the next 10 years. The Framingham Risk Score is a clinically validated cardiovascular risk assessment tool used worldwide.</p>
           <div style={{ display:'flex', alignItems:'center', gap:'14px', marginBottom:'14px' }}>
-            <div style={{ minWidth:'52px', height:'52px', borderRadius:'12px', backgroundColor:cv.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-              <span style={{ fontSize:'1.125rem', fontWeight:900, color:cv.color }}>{data.cvd_risk}%</span>
-            </div>
-            <div>
-              <StatusBadge label={cv.label} color={cv.color} bg={cv.bg} />
-              <p style={{ margin:'8px 0 0', fontSize:'0.875rem', fontWeight:600, color:'#0f172a' }}>{cv.headline}</p>
+            <div style={{ padding:'10px 16px', borderRadius:'12px', backgroundColor:cv.bg, display:'inline-flex', alignItems:'baseline', flexShrink:0 }}>
+              <span style={{ fontSize:'1.25rem', fontWeight:900, color:cv.color }}>{data.cvd_risk}%</span>
             </div>
           </div>
           <div style={{ backgroundColor:cv.bg, borderRadius:'12px', padding:'14px 16px', textAlign:'center' }}>
